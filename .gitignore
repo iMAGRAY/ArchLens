@@ -97,6 +97,7 @@ coverage/
 *.bak
 *.backup
 *.tmp
+mcp_backup/
 
 # Application specific
 architecture_reports/

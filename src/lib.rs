@@ -8,6 +8,7 @@ pub mod capsule_enricher;
 pub mod validator_optimizer;
 pub mod exporter;
 pub mod commands;
+pub mod cli;
 
 #[cfg(test)]
 mod test_commands;

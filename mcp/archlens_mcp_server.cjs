@@ -20,15 +20,14 @@ const server = new Server({
 // 🔍 Определение пути к бинарнику ArchLens
 function getArchLensBinary() {
   const platform = os.platform();
-  const arch = os.arch();
+  const extension = platform === 'win32' ? '.exe' : '';
   
-  // Ищем бинарник в разных местах
+  // Приоритет: локальный бинарник в папке MCP
   const possiblePaths = [
-    path.join(__dirname, '..', 'target', 'release', 'archlens.exe'),
-    path.join(__dirname, '..', 'target', 'release', 'archlens'),
-    path.join(__dirname, '..', 'target', 'debug', 'archlens.exe'),
-    path.join(__dirname, '..', 'target', 'debug', 'archlens'),
-    'archlens.exe',
+    path.join(__dirname, `archlens${extension}`),  // В папке mcp (приоритет)
+    path.join(__dirname, '..', 'target', 'release', `archlens${extension}`),
+    path.join(__dirname, '..', 'target', 'debug', `archlens${extension}`),
+    `archlens${extension}`,
     'archlens'
   ];
   
@@ -38,7 +37,11 @@ function getArchLensBinary() {
     }
   }
   
-  throw new Error('ArchLens бинарник не найден. Убедитесь что проект собран: cargo build --release');
+  throw new Error('❌ ArchLens бинарник не найден.\n' + 
+    '📋 Убедитесь что:\n' + 
+    '  1. Проект собран: cargo build --release\n' + 
+    '  2. Бинарник скопирован: npm run update-binary\n' + 
+    '  3. Или запустите: node update-binary.js');
 }
 
 // 📊 Анализ архитектуры проекта
@@ -62,25 +65,10 @@ async function handleAnalyzeProject(args) {
       throw new Error(`Путь не существует: ${project_path}`);
     }
     
-    // Создаем временный файл конфигурации
-    const tempConfig = {
-      project_path,
-      include_patterns,
-      exclude_patterns,
-      max_depth,
-      analyze_dependencies,
-      extract_comments,
-      generate_summaries,
-      languages: ["Rust", "TypeScript", "JavaScript", "Python"]
-    };
-    
-    const configPath = path.join(os.tmpdir(), `archlens_config_${Date.now()}.json`);
-    fs.writeFileSync(configPath, JSON.stringify(tempConfig, null, 2));
-    
-    // Запускаем анализ через бинарник
+        // Запускаем анализ через бинарник в CLI режиме
     const result = await new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
-      const child = spawn(binary, ['analyze', '--config', configPath], {
+      const child = spawn(binary, ['analyze', project_path], {
         stdio: ['pipe', 'pipe', 'pipe']
       });
       
@@ -96,22 +84,17 @@ async function handleAnalyzeProject(args) {
       });
       
       child.on('close', (code) => {
-        // Удаляем временный файл
-        try {
-          fs.unlinkSync(configPath);
-        } catch (e) {}
-        
         if (code === 0) {
           try {
             const analysisResult = JSON.parse(stdout);
             resolve(analysisResult);
           } catch (e) {
-                         resolve({
-               status: "success", 
-               message: "Анализ завершен",
-               output: stdout,
-               lines_analyzed: (stdout.match(/\n/g) || []).length
-             });
+            resolve({
+              status: "success",
+              message: "Анализ завершен",
+              output: stdout,
+              lines_analyzed: (stdout.match(/\n/g) || []).length
+            });
           }
         } else {
           reject(new Error(`Анализ завершился с ошибкой (код ${code}): ${stderr}`));
@@ -164,20 +147,13 @@ async function handleExportAICompact(args) {
       throw new Error("project_path обязателен");
     }
     
-    // Сначала выполняем анализ
-    const analysisResult = await handleAnalyzeProject({ project_path });
-    
-    if (analysisResult.isError) {
-      return analysisResult;
-    }
-    
-    // Экспортируем в AI Compact формат
+    // Напрямую экспортируем в AI Compact формат
     const result = await new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
-      const args = ['export', '--format', 'ai_compact', '--project', project_path];
+      const args = ['export', project_path, 'ai_compact'];
       
       if (output_file) {
-        args.push('--output', output_file);
+        args.push(output_file);
       }
       
       const child = spawn(binary, args, {
@@ -255,7 +231,7 @@ async function handleGetProjectStructure(args) {
     
     const result = await new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
-      const child = spawn(binary, ['structure', '--project', project_path, '--format', 'json'], {
+      const child = spawn(binary, ['structure', project_path], {
         stdio: ['pipe', 'pipe', 'pipe']
       });
       
@@ -334,10 +310,10 @@ async function handleGenerateDiagram(args) {
     
     const result = await new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
-      const args = ['diagram', '--project', project_path, '--type', diagram_type];
+      const args = ['diagram', project_path, diagram_type];
       
       if (output_file) {
-        args.push('--output', output_file);
+        args.push(output_file);
       }
       
       const child = spawn(binary, args, {

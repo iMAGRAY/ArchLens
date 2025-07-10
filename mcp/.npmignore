@@ -1,0 +1,5 @@
+# Исключить из NPM пакета
+.gitignore
+*.log
+.DS_Store
+Thumbs.db 

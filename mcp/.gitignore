@@ -1,0 +1,10 @@
+# NPM
+node_modules/
+*.tgz
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db 
