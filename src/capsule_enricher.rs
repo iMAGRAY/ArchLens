@@ -3,6 +3,7 @@
 use crate::core::*;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
+use std::path::Path;
 
 pub struct CapsuleEnricher {
     import_patterns: HashMap<FileType, Regex>,
@@ -81,7 +82,7 @@ impl CapsuleEnricher {
     
     fn enrich_capsule_metadata(&self, capsule: &mut Capsule, content: &str) -> Result<()> {
         // Извлечение комментариев и документации
-        let doc_comments = self.extract_documentation(content, &capsule.file_path);
+        let doc_comments = self.extract_documentation(&content, &capsule.file_path);
         if let Some(doc) = doc_comments.first() {
             capsule.summary = Some(doc.clone());
         }
@@ -222,35 +223,39 @@ impl CapsuleEnricher {
         Ok(())
     }
     
-    fn extract_documentation(&self, content: &str, file_path: &std::path::PathBuf) -> Vec<String> {
+    /// Извлекает документацию из содержимого файла
+    fn extract_documentation(&self, content: &str, file_path: &Path) -> Vec<String> {
         let mut docs = Vec::new();
         
-        // Rust doc comments
+        // Rust-style документация
         if file_path.extension().is_some_and(|e| e == "rs") {
+            // Ищем /// комментарии
             for line in content.lines() {
                 let trimmed = line.trim();
-                if trimmed.starts_with("///") || trimmed.starts_with("//!") {
-                    docs.push(trimmed.trim_start_matches("///").trim_start_matches("//!").trim().to_string());
+                if trimmed.starts_with("///") {
+                    docs.push(trimmed.trim_start_matches("///").trim().to_string());
                 }
             }
         }
         
-        // JavaScript/TypeScript JSDoc
+        // JS/TS-style документация
         if file_path.extension().is_some_and(|e| e == "js" || e == "ts" || e == "tsx") {
-            let jsdoc_regex = Regex::new(r"/\*\*(.*?)\*/").unwrap();
-            for capture in jsdoc_regex.captures_iter(content) {
-                if let Some(doc) = capture.get(1) {
-                    docs.push(doc.as_str().trim().to_string());
+            // Ищем JSDoc комментарии
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("/**") || trimmed.starts_with("*") {
+                    docs.push(trimmed.trim_start_matches("/**").trim_start_matches("*").trim().to_string());
                 }
             }
         }
         
-        // Python docstrings
+        // Python-style документация
         if file_path.extension().is_some_and(|e| e == "py") {
-            let docstring_regex = Regex::new(r#"[\"']{3}(.*?)[\"']{3}"#).unwrap();
-            for capture in docstring_regex.captures_iter(content) {
-                if let Some(doc) = capture.get(1) {
-                    docs.push(doc.as_str().trim().to_string());
+            // Ищем docstrings
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''") {
+                    docs.push(trimmed.trim_start_matches("\"\"\"").trim_start_matches("'''").trim().to_string());
                 }
             }
         }
@@ -313,17 +318,47 @@ impl CapsuleEnricher {
         
         false
     }
-    
-    fn determine_file_type(&self, path: &std::path::PathBuf) -> FileType {
-        match path.extension().and_then(|e| e.to_str()) {
+
+    /// Вычисляет индекс качества капсулы
+    fn calculate_quality_index(&self, capsule: &Capsule) -> f64 {
+        let mut score = 50.0; // Базовый балл
+        
+        // Штраф за сложность
+        if capsule.complexity > 10 {
+            score -= 10.0;
+        }
+        
+        // Бонус за документацию
+        if capsule.summary.is_some() {
+            score += 10.0;
+        }
+        
+        // Штраф за предупреждения
+        score -= capsule.warnings.len() as f64 * 5.0;
+        
+        // Бонус за связи
+        score += capsule.dependencies.len() as f64 * 2.0;
+        
+        score.clamp(0.0, 100.0)
+    }
+
+    /// Определяет тип файла по расширению
+    fn determine_file_type(&self, path: &Path) -> FileType {
+        match path.extension().and_then(|ext| ext.to_str()) {
             Some("rs") => FileType::Rust,
-            Some("js") => FileType::JavaScript,
             Some("ts") | Some("tsx") => FileType::TypeScript,
+            Some("js") | Some("jsx") => FileType::JavaScript,
             Some("py") => FileType::Python,
             Some("java") => FileType::Java,
             Some("go") => FileType::Go,
             Some("cpp") | Some("cc") | Some("cxx") => FileType::Cpp,
             Some("c") => FileType::C,
+            Some("h") | Some("hpp") => FileType::Other("header".to_string()),
+            Some("json") => FileType::Other("json".to_string()),
+            Some("yaml") | Some("yml") => FileType::Other("yaml".to_string()),
+            Some("toml") => FileType::Other("toml".to_string()),
+            Some("md") => FileType::Other("markdown".to_string()),
+            Some("txt") => FileType::Other("text".to_string()),
             Some(ext) => FileType::Other(ext.to_string()),
             None => FileType::Other("unknown".to_string()),
         }

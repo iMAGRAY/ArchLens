@@ -153,18 +153,19 @@ impl CapsuleConstructor {
                 if let Some(dir_str) = dir_name.to_str() {
                     return match dir_str {
                         "src" | "lib" => "Core".to_string(),
-                        "api" | "routes" => "API".to_string(),
-                        "models" | "entities" => "Domain".to_string(),
-                        "services" => "Business".to_string(),
-                        "utils" | "helpers" => "Utils".to_string(),
-                        "components" => "UI".to_string(),
-                        "tests" => "Testing".to_string(),
-                        _ => "Application".to_string(),
+                        "api" | "controllers" | "routes" => "API".to_string(),
+                        "ui" | "components" | "views" => "UI".to_string(),
+                        "utils" | "helpers" | "tools" => "Utils".to_string(),
+                        "models" | "entities" | "domain" => "Business".to_string(),
+                        "services" | "business" => "Business".to_string(),
+                        "data" | "database" | "db" => "Data".to_string(),
+                        "tests" | "test" => "Tests".to_string(),
+                        _ => "Other".to_string(),
                     };
                 }
             }
         }
-        "Application".to_string()
+        "Core".to_string()
     }
 
     /// Генерирует слоган для элемента
@@ -260,10 +261,14 @@ impl CapsuleConstructor {
         });
     }
 
-    /// Объединяет мелкие капсулы
-    fn merge_small_capsules(&self, _capsules: &mut Vec<Capsule>) -> Result<()> {
-        // #ДОДЕЛАТЬ: Реализовать логику объединения мелких капсул
-        // Например, объединить функции с complexity < 2 в одну капсулу
+    /// Объединяет мелкие капсулы в более крупные
+    fn merge_small_capsules(&self, _capsules: &mut [Capsule]) -> Result<()> {
+        // #ДОДЕЛАТЬ: Логика объединения мелких капсул
+        // Критерии для объединения:
+        // - Размер < 10 строк
+        // - Схожий функционал
+        // - Одинаковый слой
+        
         Ok(())
     }
 }

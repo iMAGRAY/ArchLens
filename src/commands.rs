@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tauri::State;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -7,7 +9,6 @@ use crate::exporter::Exporter;
 use crate::capsule_graph_builder::CapsuleGraphBuilder;
 use crate::capsule_enricher::CapsuleEnricher;
 use crate::validator_optimizer::ValidatorOptimizer;
-use std::path::PathBuf;
 
 // Состояние приложения
 pub struct AppState {
@@ -164,23 +165,25 @@ pub async fn analyze_project(
     Ok(json_result)
 }
 
-fn determine_layer(path: &PathBuf) -> String {
+fn determine_layer(path: &Path) -> String {
     if let Some(parent) = path.parent() {
         if let Some(dir_name) = parent.file_name() {
             if let Some(dir_str) = dir_name.to_str() {
                 return match dir_str {
                     "src" | "lib" => "Core".to_string(),
-                    "api" | "routes" => "API".to_string(),
-                    "models" | "entities" => "Domain".to_string(),
-                    "services" => "Business".to_string(),
-                    "utils" | "helpers" => "Utils".to_string(),
-                    "components" => "UI".to_string(),
-                    _ => "Application".to_string(),
+                    "api" | "controllers" | "routes" => "API".to_string(),
+                    "ui" | "components" | "views" => "UI".to_string(),
+                    "utils" | "helpers" | "tools" => "Utils".to_string(),
+                    "models" | "entities" | "domain" => "Business".to_string(),
+                    "services" | "business" => "Business".to_string(),
+                    "data" | "database" | "db" => "Data".to_string(),
+                    "tests" | "test" => "Tests".to_string(),
+                    _ => "Other".to_string(),
                 };
             }
         }
     }
-    "Application".to_string()
+    "Core".to_string()
 }
 
 fn determine_capsule_type(file_type: &FileType) -> CapsuleType {
