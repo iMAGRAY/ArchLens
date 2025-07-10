@@ -124,6 +124,20 @@ pub struct CapsuleGraph {
     pub layers: HashMap<String, Vec<Uuid>>,
     pub metrics: GraphMetrics,
     pub created_at: DateTime<Utc>,
+    pub previous_analysis: Option<Box<ComparisonSnapshot>>, // Для дифф-анализа
+}
+
+/// Снимок предыдущего анализа для сравнения
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparisonSnapshot {
+    pub metrics: GraphMetrics,
+    pub total_capsules: usize,
+    pub total_relations: usize,
+    pub max_complexity: u32,
+    pub max_complexity_module: String,
+    pub orphan_count: usize,
+    pub cycle_count: usize,
+    pub analyzed_at: DateTime<Utc>,
 }
 
 /// Метрики графа
@@ -164,8 +178,10 @@ pub enum ExportFormat {
     GraphML,
     DOT,
     Mermaid,
+    SVG,
     ChainOfThought,
     LLMPrompt,
+    AICompact,  // Сжатый формат для AI моделей (до 100k токенов)
 }
 
 /// Настройки анализа

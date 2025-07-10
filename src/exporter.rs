@@ -31,8 +31,10 @@ impl Exporter {
             ExportFormat::Mermaid => self.export_to_mermaid(graph)?,
             ExportFormat::DOT => self.export_to_dot(graph)?,
             ExportFormat::GraphML => self.export_to_graphml(graph)?,
+            ExportFormat::SVG => self.export_to_svg(graph)?,
             ExportFormat::ChainOfThought => self.export_to_chain_of_thought(graph)?,
             ExportFormat::LLMPrompt => self.export_to_llm_prompt(graph)?,
+            ExportFormat::AICompact => self.export_to_ai_compact(graph)?,
         };
         
         std::fs::write(output_path, &content)?;
@@ -261,6 +263,187 @@ impl Exporter {
         graphml.push_str("</graphml>\n");
         Ok(graphml)
     }
+
+    pub fn export_to_svg(&self, graph: &CapsuleGraph) -> Result<String> {
+        let mut svg = String::new();
+        
+        // Вычисляем размеры диаграммы
+        let total_capsules = graph.capsules.len();
+        let layer_count = graph.layers.len().max(1);
+        let width = (layer_count * 300 + 200).min(1600);
+        let height = (total_capsules * 50 + 400).min(1200);
+        
+        // SVG заголовок
+        svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        svg.push_str(&format!("<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\">\n", width, height, width, height));
+        
+        // Стили CSS
+        svg.push_str("<defs>\n<style>\n");
+        svg.push_str(".title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #2c3e50; }\n");
+        svg.push_str(".layer-title { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; fill: #34495e; }\n");
+        svg.push_str(".capsule-name { font-family: Arial, sans-serif; font-size: 12px; fill: #2c3e50; }\n");
+        svg.push_str(".complexity-text { font-family: Arial, sans-serif; font-size: 10px; fill: #7f8c8d; }\n");
+        svg.push_str(".metric-text { font-family: Arial, sans-serif; font-size: 12px; fill: #2c3e50; }\n");
+        svg.push_str(".module-capsule { fill: #e3f2fd; stroke: #1976d2; stroke-width: 2; }\n");
+        svg.push_str(".function-capsule { fill: #f3e5f5; stroke: #7b1fa2; stroke-width: 2; }\n");
+        svg.push_str(".struct-capsule { fill: #e8f5e8; stroke: #388e3c; stroke-width: 2; }\n");
+        svg.push_str(".class-capsule { fill: #fff3e0; stroke: #f57c00; stroke-width: 2; }\n");
+        svg.push_str(".interface-capsule { fill: #fce4ec; stroke: #c2185b; stroke-width: 2; }\n");
+        svg.push_str(".other-capsule { fill: #f5f5f5; stroke: #616161; stroke-width: 2; }\n");
+        svg.push_str(".layer-background { fill: #fafafa; stroke: #e0e0e0; stroke-width: 1; }\n");
+        svg.push_str(".capsule:hover { filter: brightness(1.1); cursor: pointer; }\n");
+        svg.push_str("</style>\n");
+        
+        // Маркер стрелки
+        svg.push_str("<marker id=\"arrowhead\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">\n");
+        svg.push_str("<polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#424242\" />\n");
+        svg.push_str("</marker>\n</defs>\n\n");
+        
+        // Заголовок диаграммы
+        svg.push_str(&format!("<text x=\"{}\" y=\"25\" class=\"title\" text-anchor=\"middle\">Архитектурная диаграмма ArchLens</text>\n", width / 2));
+        svg.push_str(&format!("<text x=\"{}\" y=\"45\" class=\"metric-text\" text-anchor=\"middle\">Капсул: {} | Связей: {} | Слоёв: {} | Сложность: {:.1}</text>\n", 
+            width / 2, graph.metrics.total_capsules, graph.metrics.total_relations, graph.layers.len(), graph.metrics.complexity_average));
+        
+        // Панель метрик
+        svg.push_str(&format!("<rect x=\"20\" y=\"60\" width=\"{}\" height=\"60\" class=\"layer-background\" rx=\"5\"/>\n", width - 40));
+        svg.push_str(&format!("<text x=\"30\" y=\"80\" class=\"metric-text\">Метрики качества:</text>\n"));
+        svg.push_str(&format!("<text x=\"30\" y=\"95\" class=\"complexity-text\">• Связанность: {:.2} • Сплоченность: {:.2} • Глубина: {}</text>\n", 
+            graph.metrics.coupling_index, graph.metrics.cohesion_index, graph.metrics.depth_levels));
+        svg.push_str(&format!("<text x=\"30\" y=\"110\" class=\"complexity-text\">• Цикломатическая сложность: {}</text>\n", graph.metrics.cyclomatic_complexity));
+        
+        // Рисуем слои и капсулы
+        let layer_width = (width - 100) / layer_count.max(1);
+        let mut capsule_positions = std::collections::HashMap::new();
+        
+        for (layer_index, (layer_name, capsule_ids)) in graph.layers.iter().enumerate() {
+            let x = 50 + layer_index * layer_width;
+            let layer_height = capsule_ids.len() * 70 + 100;
+            
+            // Фон слоя
+            svg.push_str(&format!("<rect x=\"{}\" y=\"140\" width=\"{}\" height=\"{}\" class=\"layer-background\" rx=\"5\"/>\n", 
+                x, layer_width - 20, layer_height));
+            
+            // Заголовок слоя
+            svg.push_str(&format!("<text x=\"{}\" y=\"165\" class=\"layer-title\" text-anchor=\"middle\">{} ({})</text>\n", 
+                x + layer_width / 2 - 10, layer_name, capsule_ids.len()));
+            
+            // Капсулы в слое
+            for (cap_index, capsule_id) in capsule_ids.iter().enumerate() {
+                if let Some(capsule) = graph.capsules.get(capsule_id) {
+                    let cap_x = x + 10;
+                    let cap_y = 180 + cap_index * 70;
+                    let cap_width = layer_width - 40;
+                    let cap_height = 60;
+                    
+                    // Сохраняем позицию для рисования связей
+                    capsule_positions.insert(*capsule_id, (cap_x + cap_width / 2, cap_y + cap_height / 2));
+                    
+                    // Определяем класс стиля по типу
+                    let capsule_class = match capsule.capsule_type {
+                        CapsuleType::Module => "module-capsule",
+                        CapsuleType::Function | CapsuleType::Method => "function-capsule",
+                        CapsuleType::Struct | CapsuleType::Enum => "struct-capsule",
+                        CapsuleType::Class => "class-capsule",
+                        CapsuleType::Interface => "interface-capsule",
+                        _ => "other-capsule",
+                    };
+                    
+                    // Иконка по типу
+                    let icon = match capsule.capsule_type {
+                        CapsuleType::Module => "📦",
+                        CapsuleType::Function | CapsuleType::Method => "⚙️",
+                        CapsuleType::Struct | CapsuleType::Enum => "🏗️",
+                        CapsuleType::Class => "🎯",
+                        CapsuleType::Interface => "🔗",
+                        _ => "⚪",
+                    };
+                    
+                    // Прямоугольник капсулы
+                    svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" class=\"{} capsule\" rx=\"3\">\n", 
+                        cap_x, cap_y, cap_width, cap_height, capsule_class));
+                    
+                    // Tooltip с деталями
+                    svg.push_str(&format!("<title>{} {} ({}): Сложность {}, Строки {}-{}</title>\n", 
+                        icon, capsule.name, format!("{:?}", capsule.capsule_type), capsule.complexity, capsule.line_start, capsule.line_end));
+                    svg.push_str("</rect>\n");
+                    
+                    // Иконка и название
+                    svg.push_str(&format!("<text x=\"{}\" y=\"{}\" class=\"capsule-name\">{} {}</text>\n", 
+                        cap_x + 5, cap_y + 20, icon, self.truncate_name(&capsule.name, 25)));
+                    
+                    // Сложность и приоритет
+                    svg.push_str(&format!("<text x=\"{}\" y=\"{}\" class=\"complexity-text\">Сложность: {} | Приоритет: {:?}</text>\n", 
+                        cap_x + 5, cap_y + 35, capsule.complexity, capsule.priority));
+                    
+                    // Путь к файлу (сокращенный)
+                    let short_path = capsule.file_path.file_name().unwrap_or_default().to_string_lossy();
+                    svg.push_str(&format!("<text x=\"{}\" y=\"{}\" class=\"complexity-text\">Файл: {}</text>\n", 
+                        cap_x + 5, cap_y + 50, short_path));
+                    
+                    // Предупреждения
+                    if !capsule.warnings.is_empty() {
+                        svg.push_str(&format!("<circle cx=\"{}\" cy=\"{}\" r=\"6\" fill=\"#f44336\" stroke=\"#ffffff\" stroke-width=\"1\"/>\n", 
+                            cap_x + cap_width - 15, cap_y + 15));
+                        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" class=\"complexity-text\" fill=\"white\" text-anchor=\"middle\">!</text>\n", 
+                            cap_x + cap_width - 15, cap_y + 18));
+                    }
+                }
+            }
+        }
+        
+        // Рисуем связи между капсулами
+        svg.push_str(&format!("\n<!-- Связи ({}) -->\n", graph.relations.len()));
+        for relation in &graph.relations {
+            if let (Some(from_pos), Some(to_pos)) = (
+                capsule_positions.get(&relation.from_id),
+                capsule_positions.get(&relation.to_id)
+            ) {
+                let color = match relation.relation_type {
+                    RelationType::Depends => "#2196f3",
+                    RelationType::Uses => "#4caf50",
+                    RelationType::Implements => "#ff9800",
+                    RelationType::Extends => "#9c27b0",
+                    _ => "#607d8b",
+                };
+                
+                let line_style = match relation.relation_type {
+                    RelationType::Uses => "stroke-dasharray=\"5,5\"",
+                    _ => "",
+                };
+                
+                svg.push_str(&format!("<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\" {} marker-end=\"url(#arrowhead)\">\n", 
+                    from_pos.0, from_pos.1, to_pos.0, to_pos.1, color, line_style));
+                
+                svg.push_str(&format!("<title>{:?}: {:.2}</title>\n", relation.relation_type, relation.strength));
+                svg.push_str("</line>\n");
+            }
+        }
+        
+        // Легенда
+        let legend_y = height - 120;
+        svg.push_str(&format!("<rect x=\"20\" y=\"{}\" width=\"300\" height=\"100\" class=\"layer-background\" rx=\"5\"/>\n", legend_y));
+        svg.push_str(&format!("<text x=\"30\" y=\"{}\" class=\"layer-title\">Легенда типов:</text>\n", legend_y + 20));
+        
+        let legend_items = [
+            ("📦 Модуль", "module-capsule"),
+            ("⚙️ Функция", "function-capsule"),
+            ("🏗️ Структура", "struct-capsule"),
+            ("🎯 Класс", "class-capsule"),
+        ];
+        
+        for (i, (label, class)) in legend_items.iter().enumerate() {
+            let legend_x = 30 + (i % 2) * 140;
+            let legend_item_y = legend_y + 35 + (i / 2) * 20;
+            
+            svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"15\" height=\"15\" class=\"{}\"/>\n", 
+                legend_x, legend_item_y - 12, class));
+            svg.push_str(&format!("<text x=\"{}\" y=\"{}\" class=\"complexity-text\">{}</text>\n", 
+                legend_x + 20, legend_item_y, label));
+        }
+        
+        svg.push_str("</svg>");
+        Ok(svg)
+    }
     
     pub fn export_to_chain_of_thought(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut cot = String::new();
@@ -390,6 +573,311 @@ impl Exporter {
         prompt.push_str("- Оценку рисков\n");
         
         Ok(prompt)
+    }
+
+    pub fn export_to_ai_compact(&self, graph: &CapsuleGraph) -> Result<String> {
+        let mut output = String::new();
+        
+        // Компактный заголовок с ключевыми метриками
+        output.push_str("# 🏗️ АРХИТЕКТУРНЫЙ ПРОФИЛЬ СИСТЕМЫ\n\n");
+        
+        // Сжатые метрики в одну строку
+        output.push_str(&format!("📊 МЕТРИКИ: {}к/{}/{}лв | Сложн:{:.1} | Связ:{:.2} | Спл:{:.2}\n\n",
+            graph.metrics.total_capsules,
+            graph.metrics.total_relations, 
+            graph.metrics.depth_levels,
+            graph.metrics.complexity_average,
+            graph.metrics.coupling_index,
+            graph.metrics.cohesion_index
+        ));
+        
+        // Паттерны и аномалии - новый критический блок
+        output.push_str("## 🧩 ПАТТЕРНЫ/АНОМАЛИИ\n\n");
+        
+        // Поиск циклических зависимостей
+        let cycles = self.detect_cycles(graph);
+        if !cycles.is_empty() {
+            output.push_str("- [CYCLE] ");
+            for cycle in cycles.iter().take(3) {
+                output.push_str(&format!("{} <-> ", cycle));
+            }
+            output.push_str("...\n");
+        }
+        
+        // God Objects (высокая сложность)
+        let god_objects: Vec<_> = graph.capsules.values()
+            .filter(|c| c.complexity > 50 || (c.complexity > 25 && c.dependencies.len() > 10))
+            .collect();
+        if !god_objects.is_empty() {
+            output.push_str("- [GOD-OBJECT] ");
+            for obj in god_objects.iter().take(5) {
+                output.push_str(&format!("{}({}), ", obj.name, obj.complexity));
+            }
+            output.push_str("...\n");
+        }
+        
+        // Orphan модули (нет зависимостей)
+        let orphans: Vec<_> = graph.capsules.values()
+            .filter(|c| c.dependencies.is_empty() && c.dependents.is_empty() && 
+                      c.capsule_type != CapsuleType::Export && c.capsule_type != CapsuleType::Import)
+            .collect();
+        if !orphans.is_empty() {
+            output.push_str(&format!("- [ORPHAN] {} модулей: ", orphans.len()));
+            for orphan in orphans.iter().take(3) {
+                output.push_str(&format!("{}, ", orphan.name));
+            }
+            output.push_str("...\n");
+        }
+        
+        // Модули без тестов (определяем по отсутствию test_ префиксов в связях)
+        let no_tests: Vec<_> = graph.capsules.values()
+            .filter(|c| c.capsule_type == CapsuleType::Module && 
+                      !graph.relations.iter().any(|r| {
+                          if let Some(dep) = graph.capsules.get(&r.to_id) {
+                              dep.name.contains("test") && r.from_id == c.id
+                          } else { false }
+                      }))
+            .collect();
+        if !no_tests.is_empty() {
+            output.push_str("- [NO-TESTS] ");
+            for nt in no_tests.iter().take(4) {
+                output.push_str(&format!("{}, ", nt.name));
+            }
+            output.push_str("...\n");
+        }
+        
+        output.push('\n');
+        
+        // Дифф-анализ (если есть предыдущий анализ)
+        if let Some(prev) = &graph.previous_analysis {
+            output.push_str("## 📉 ИЗМЕНЕНИЯ (от предыдущего анализа)\n\n");
+            
+            let capsules_diff = graph.metrics.total_capsules as i32 - prev.total_capsules as i32;
+            let relations_diff = graph.metrics.total_relations as i32 - prev.total_relations as i32;
+            
+            // Подсчитываем текущие аномалии
+            let current_cycles = self.detect_cycles(graph).len();
+            let current_orphans = graph.capsules.values()
+                .filter(|c| c.dependencies.is_empty() && c.dependents.is_empty())
+                .count();
+            let current_max_complexity = graph.capsules.values()
+                .map(|c| c.complexity)
+                .max()
+                .unwrap_or(0);
+            let current_max_module = graph.capsules.values()
+                .max_by_key(|c| c.complexity)
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            
+            let cycles_diff = current_cycles as i32 - prev.cycle_count as i32;
+            let orphans_diff = current_orphans as i32 - prev.orphan_count as i32;
+            let complexity_diff = current_max_complexity as i32 - prev.max_complexity as i32;
+            
+            output.push_str(&format!("- Модули: {:+}, Связи: {:+}, Циклы: {:+}, Orphan: {:+}\n",
+                capsules_diff, relations_diff, cycles_diff, orphans_diff));
+                
+            if complexity_diff != 0 {
+                output.push_str(&format!("- Сложность max: {:+} ({})\n", complexity_diff, current_max_module));
+            }
+            
+            let coupling_diff = graph.metrics.coupling_index - prev.metrics.coupling_index;
+            if coupling_diff.abs() > 0.05 {
+                output.push_str(&format!("- Связанность: {:+.2}\n", coupling_diff));
+            }
+            
+            let days_since = (graph.created_at - prev.analyzed_at).num_days();
+            output.push_str(&format!("- Период: {} дней\n", days_since));
+            
+            // Индикаторы тренда
+            if cycles_diff > 0 || coupling_diff > 0.1 || complexity_diff > 10 {
+                output.push_str("⚠️ **ТРЕНД:** Деградация архитектуры\n");
+            } else if cycles_diff < 0 && orphans_diff <= 0 && coupling_diff < 0.0 {
+                output.push_str("✅ **ТРЕНД:** Улучшение архитектуры\n");
+            }
+            
+            output.push('\n');
+        }
+        
+        // Архитектурные слои - только топ проблемные
+        output.push_str("## 🎯 АРХИТЕКТУРНАЯ КАРТА (TOP-10 КРИТИЧЕСКИХ)\n\n");
+        
+        let mut all_capsules: Vec<_> = graph.capsules.values().collect();
+        all_capsules.sort_by(|a, b| {
+            // Сортируем по "проблемности": сложность + связанность + предупреждения
+            let score_a = a.complexity + (a.dependencies.len() + a.dependents.len()) as u32 * 2 + a.warnings.len() as u32 * 5;
+            let score_b = b.complexity + (b.dependencies.len() + b.dependents.len()) as u32 * 2 + b.warnings.len() as u32 * 5;
+            score_b.cmp(&score_a)
+        });
+        
+        for (layer_name, capsule_ids) in &graph.layers {
+            let layer_capsules: Vec<_> = capsule_ids.iter()
+                .filter_map(|id| graph.capsules.get(id))
+                .collect();
+            
+            // Фильтруем только проблемные капсулы в слое
+            let problematic: Vec<_> = layer_capsules.iter()
+                .filter(|c| c.complexity > 10 || c.dependencies.len() > 3 || !c.warnings.is_empty())
+                .take(10)
+                .collect();
+            
+            if problematic.is_empty() && !layer_name.contains("core") && !layer_name.contains("main") {
+                continue; // Пропускаем неинтересные слои
+            }
+            
+            let total_complexity: u32 = layer_capsules.iter().map(|c| c.complexity).sum();
+            let warnings_count = layer_capsules.iter().map(|c| c.warnings.len()).sum::<usize>();
+            
+            output.push_str(&format!("### 📦 {} ", layer_name));
+            if warnings_count > 0 {
+                output.push_str(&format!("({}/{}⚠ ⚡{})\n", layer_capsules.len(), warnings_count, total_complexity));
+            } else {
+                output.push_str(&format!("({} ⚡{})\n", layer_capsules.len(), total_complexity));
+            }
+            
+            // Показываем только критические элементы
+            for capsule in problematic {
+                let symbol = match capsule.capsule_type {
+                    CapsuleType::Module => "📦",
+                    CapsuleType::Function | CapsuleType::Method => "⚙️",
+                    CapsuleType::Struct | CapsuleType::Enum => "🏗️",
+                    CapsuleType::Class | CapsuleType::Interface => "🎯",
+                    _ => "⚪"
+                };
+                
+                let name = if capsule.name.len() > 20 {
+                    format!("{}...", &capsule.name[..17])
+                } else {
+                    capsule.name.clone()
+                };
+                
+                output.push_str(&format!("  {} {}({})", symbol, name, capsule.complexity));
+                if capsule.complexity > 20 { output.push_str("🔥"); }
+                if !capsule.warnings.is_empty() { output.push_str("⚠"); }
+                if capsule.dependencies.len() > 5 { output.push_str("🕸️"); }
+                output.push('\n');
+            }
+            output.push('\n');
+        }
+        
+        // Критические связи - только проблемные
+        output.push_str("## 🔗 ПРОБЛЕМНЫЕ СВЯЗИ\n\n");
+        
+        // Ищем циклические и перегруженные связи
+        let mut problematic_relations: Vec<_> = graph.relations.iter()
+            .filter(|r| {
+                // Высокая сила связи ИЛИ потенциальный цикл ИЛИ неожиданная зависимость
+                r.strength > 0.8 || 
+                self.is_unexpected_dependency(graph, r) ||
+                self.creates_coupling_issue(graph, r)
+            })
+            .collect();
+        
+        problematic_relations.sort_by(|a, b| b.strength.partial_cmp(&a.strength).unwrap());
+        
+        for relation in problematic_relations.iter().take(10) {
+            if let (Some(from_capsule), Some(to_capsule)) = 
+                (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
+                
+                let from_name = if from_capsule.name.len() > 15 {
+                    format!("{}...", &from_capsule.name[..12])
+                } else {
+                    from_capsule.name.clone()
+                };
+                let to_name = if to_capsule.name.len() > 15 {
+                    format!("{}...", &to_capsule.name[..12])
+                } else {
+                    to_capsule.name.clone()
+                };
+                
+                let arrow = match relation.relation_type {
+                    RelationType::Depends => "→",
+                    RelationType::Uses => "⇒", 
+                    RelationType::Implements => "⚡",
+                    RelationType::Extends => "↗",
+                    RelationType::Calls => "📞",
+                    _ => "—"
+                };
+                
+                output.push_str(&format!("{} {} {} ({:.2})", from_name, arrow, to_name, relation.strength));
+                
+                // Добавляем индикаторы проблем
+                if relation.strength > 0.9 { output.push_str(" 🔥"); }
+                if self.is_unexpected_dependency(graph, relation) { output.push_str(" ❓"); }
+                if self.creates_coupling_issue(graph, relation) { output.push_str(" 🕸️"); }
+                
+                output.push('\n');
+            }
+        }
+        
+        // Рекомендации на основе паттернов
+        output.push_str("\n## 💡 КРИТИЧЕСКИЕ РЕКОМЕНДАЦИИ\n\n");
+        
+        if !cycles.is_empty() {
+            output.push_str("🔥 **КРИТИЧНО:** Разорвать циклические зависимости\n");
+        }
+        
+        if !god_objects.is_empty() {
+            output.push_str("⚠️ Декомпозировать God Objects на более мелкие модули\n");
+        }
+        
+        if graph.metrics.coupling_index > 0.8 {
+            output.push_str("🕸️ Снизить связанность через DI/интерфейсы\n");
+        }
+        
+        if !orphans.is_empty() {
+            output.push_str("🏝️ Интегрировать или удалить orphan модули\n");
+        }
+        
+        if !no_tests.is_empty() {
+            output.push_str("🧪 Добавить тесты к критическим модулям\n");
+        }
+        
+        output.push_str("🏗️ Применить архитектурные границы (Clean Architecture)\n");
+        
+        output.push_str("\n---\n");
+        output.push_str(&format!("📋 {} | Токенов: ~{} | Focus: критические проблемы\n", 
+            graph.created_at.format("%Y-%m-%d %H:%M"),
+            output.len() / 4
+        ));
+        
+        Ok(output)
+    }
+    
+    // Вспомогательные методы для анализа проблем
+    fn detect_cycles(&self, graph: &CapsuleGraph) -> Vec<String> {
+        let mut cycles = Vec::new();
+        
+        // Простая эвристика поиска циклов через анализ взаимных зависимостей
+        for relation in &graph.relations {
+            if let (Some(from), Some(to)) = (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
+                // Ищем обратную связь
+                if graph.relations.iter().any(|r| r.from_id == relation.to_id && r.to_id == relation.from_id) {
+                    cycles.push(format!("{} <-> {}", from.name, to.name));
+                }
+            }
+        }
+        
+        cycles.into_iter().take(5).collect()
+    }
+    
+    fn is_unexpected_dependency(&self, graph: &CapsuleGraph, relation: &CapsuleRelation) -> bool {
+        if let (Some(from), Some(to)) = (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
+            // UI зависит от Core/Domain - нормально
+            // Core зависит от UI - подозрительно
+            if let (Some(from_layer), Some(to_layer)) = (&from.layer, &to.layer) {
+                return (from_layer.contains("core") || from_layer.contains("domain")) && 
+                       (to_layer.contains("ui") || to_layer.contains("view"));
+            }
+        }
+        false
+    }
+    
+    fn creates_coupling_issue(&self, graph: &CapsuleGraph, relation: &CapsuleRelation) -> bool {
+        // Высокая связанность если модуль имеет много входящих И исходящих связей
+        let from_deps = graph.relations.iter().filter(|r| r.from_id == relation.from_id).count();
+        let to_deps = graph.relations.iter().filter(|r| r.to_id == relation.to_id).count();
+        
+        from_deps > 8 || to_deps > 8
     }
     
     // Вспомогательные методы

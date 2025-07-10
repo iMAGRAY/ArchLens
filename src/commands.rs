@@ -150,7 +150,7 @@ pub async fn analyze_project(
             "Проверьте цикличные зависимости между модулями".to_string(),
             "Добавьте документацию к публичным интерфейсам".to_string(),
         ],
-        export_formats: vec![ExportFormat::Json, ExportFormat::Mermaid, ExportFormat::DOT],
+        export_formats: vec![ExportFormat::Json, ExportFormat::Mermaid, ExportFormat::DOT, ExportFormat::SVG],
     };
 
     // Сохраняем результат
@@ -225,6 +225,16 @@ pub async fn export_analysis(
                         .map_err(|e| format!("Ошибка экспорта YAML: {e}"))?;
                     Ok(yaml_data)
                 }
+                "svg" => {
+                    let svg_data = exporter.export_to_svg(&result.graph)
+                        .map_err(|e| format!("Ошибка экспорта SVG: {e}"))?;
+                    Ok(svg_data)
+                }
+                "ai_compact" => {
+                    let ai_data = exporter.export_to_ai_compact(&result.graph)
+                        .map_err(|e| format!("Ошибка экспорта AI Compact: {e}"))?;
+                    Ok(ai_data)
+                }
                 _ => Err(format!("Неподдерживаемый формат: {format}"))
             }
         }
@@ -245,6 +255,22 @@ pub async fn generate_architecture_diagram(
             Ok(diagram)
         }
         None => Err("Нет данных для генерации диаграммы".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn generate_svg_architecture_diagram(
+    state: State<'_, AppState>,
+) -> std::result::Result<String, String> {
+    let analysis = state.last_analysis.lock().unwrap();
+    match analysis.as_ref() {
+        Some(result) => {
+            let exporter = Exporter::new();
+            let svg_diagram = exporter.export_to_svg(&result.graph)
+                .map_err(|e| format!("Ошибка генерации SVG диаграммы: {e}"))?;
+            Ok(svg_diagram)
+        }
+        None => Err("Нет данных для генерации SVG диаграммы".to_string()),
     }
 }
 

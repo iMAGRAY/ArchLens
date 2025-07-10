@@ -51,6 +51,8 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string>('')
+  const [svgDiagram, setSvgDiagram] = useState<string>('')
+  const [isGeneratingSvg, setIsGeneratingSvg] = useState(false)
 
   const selectProject = async () => {
     try {
@@ -137,6 +139,37 @@ function App() {
     } catch (err) {
       setError('Ошибка генерации диаграммы: ' + String(err))
     }
+  }
+
+  const generateSvgDiagram = async () => {
+    if (!analysisResult) {
+      setError('Сначала выполните анализ проекта')
+      return
+    }
+
+    setIsGeneratingSvg(true)
+    setError('')
+    
+    try {
+      const svg = await invoke('generate_svg_architecture_diagram') as string
+      setSvgDiagram(svg)
+    } catch (err) {
+      setError('Ошибка генерации SVG диаграммы: ' + String(err))
+    } finally {
+      setIsGeneratingSvg(false)
+    }
+  }
+
+  const downloadSvg = () => {
+    if (!svgDiagram) return
+    
+    const blob = new Blob([svgDiagram], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'architecture-diagram.svg'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -312,11 +345,83 @@ function App() {
                   </Button>
                   <Button 
                     startIcon={<DownloadIcon />}
+                    onClick={() => exportAnalysis('svg')}
+                  >
+                    SVG Диаграмма
+                  </Button>
+                  <Button 
+                    startIcon={<DownloadIcon />}
+                    onClick={() => exportAnalysis('ai_compact')}
+                    variant="contained"
+                    color="secondary"
+                  >
+                    AI Compact (100k)
+                  </Button>
+                  <Button 
+                    startIcon={<DownloadIcon />}
                     onClick={generateDiagram}
                   >
                     Диаграмма Mermaid
                   </Button>
                 </CardActions>
+              </Card>
+            </Grid>
+
+            {/* Интерактивная SVG диаграмма */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Архитектурная диаграмма
+                  </Typography>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<ArchitectureIcon />}
+                      onClick={generateSvgDiagram}
+                      disabled={isGeneratingSvg}
+                      sx={{ mr: 2 }}
+                    >
+                      {isGeneratingSvg ? 'Генерируем...' : 'Генерировать SVG диаграмму'}
+                    </Button>
+                    
+                    {svgDiagram && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<DownloadIcon />}
+                        onClick={downloadSvg}
+                      >
+                        Скачать SVG
+                      </Button>
+                    )}
+                  </Box>
+
+                  {isGeneratingSvg && (
+                    <Box sx={{ mt: 2 }}>
+                      <LinearProgress />
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Создание детализированной архитектурной диаграммы...
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {svgDiagram && (
+                    <Box 
+                      sx={{ 
+                        mt: 2, 
+                        border: '1px solid #e0e0e0', 
+                        borderRadius: 1, 
+                        p: 2,
+                        maxHeight: '80vh',
+                        overflow: 'auto',
+                        backgroundColor: '#fafafa'
+                      }}
+                    >
+                      <div dangerouslySetInnerHTML={{ __html: svgDiagram }} />
+                    </Box>
+                  )}
+                </CardContent>
               </Card>
             </Grid>
           </Grid>

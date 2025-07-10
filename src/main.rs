@@ -11,6 +11,7 @@ fn main() {
             get_analysis_status,
             export_analysis,
             generate_architecture_diagram,
+            generate_svg_architecture_diagram,
             get_project_structure,
             validate_project_path
         ])

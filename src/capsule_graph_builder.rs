@@ -43,6 +43,7 @@ impl CapsuleGraphBuilder {
             layers,
             metrics,
             created_at: chrono::Utc::now(),
+            previous_analysis: None,
         })
     }
     

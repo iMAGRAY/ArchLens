@@ -77,6 +77,7 @@ impl CapsuleEnricher {
             layers: graph.layers.clone(),
             metrics: graph.metrics.clone(),
             created_at: graph.created_at,
+            previous_analysis: graph.previous_analysis.clone(),
         })
     }
     
