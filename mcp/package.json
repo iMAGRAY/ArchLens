@@ -1,0 +1,41 @@
+{
+  "name": "archlens-mcp-server",
+  "version": "1.0.0",
+  "description": "🏗️ ArchLens MCP Server - Интеллектуальный анализ архитектуры кода для AI редакторов",
+  "main": "archlens_mcp_server.cjs",
+
+  "bin": {
+    "archlens-mcp": "./archlens_mcp_server.cjs"
+  },
+  "scripts": {
+    "start": "node archlens_mcp_server.cjs",
+    "dev": "node --inspect archlens_mcp_server.cjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "architecture",
+    "code-analysis",
+    "ai",
+    "cursor",
+    "vscode",
+    "claude"
+  ],
+  "author": "ArchLens Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/archlens"
+  },
+  "files": [
+    "archlens_mcp_server.cjs",
+    "README.md"
+  ]
+} 
