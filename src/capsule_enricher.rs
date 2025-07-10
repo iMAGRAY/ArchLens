@@ -320,6 +320,7 @@ impl CapsuleEnricher {
     }
 
     /// Вычисляет индекс качества капсулы
+    #[allow(dead_code)]
     fn calculate_quality_index(&self, capsule: &Capsule) -> f64 {
         let mut score = 50.0; // Базовый балл
         
