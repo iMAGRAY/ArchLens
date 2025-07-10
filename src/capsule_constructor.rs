@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use crate::core::{Capsule, CapsuleType, Priority, CapsuleStatus, Result};
 use crate::parser_ast::ASTElement;
-use crate::metadata_extractor::MetadataExtractor;
 use std::collections::HashMap;
 use chrono::Utc;
 
@@ -197,16 +196,15 @@ impl CapsuleConstructor {
         // Проверка размера
         let lines_count = element.end_line - element.start_line + 1;
         if lines_count > 100 {
-            warnings.push(format!("Большой размер: {} строк", lines_count));
+            warnings.push(format!("Большой размер: {lines_count} строк"));
         }
 
         // Проверка документации для публичных элементов
         if !matches!(element.element_type, crate::parser_ast::ASTElementType::Import | crate::parser_ast::ASTElementType::Export)
-            && element.visibility == "public" {
-            if !content_lower.contains("///") && !content_lower.contains("/**") {
+            && element.visibility == "public"
+            && !content_lower.contains("///") && !content_lower.contains("/**") {
                 warnings.push("Публичный элемент без документации".to_string());
             }
-        }
 
         // Проверка на TODO/FIXME
         if content_lower.contains("todo") {

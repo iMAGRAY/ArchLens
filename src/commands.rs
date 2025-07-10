@@ -51,10 +51,10 @@ pub async fn analyze_project(
         config.include_patterns.clone(),
         config.exclude_patterns.clone(),
         config.max_depth.map(|d| d as usize),
-    ).map_err(|e| format!("Ошибка создания сканера: {}", e))?;
+    ).map_err(|e| format!("Ошибка создания сканера: {e}"))?;
 
     let files = scanner.scan_project(&config.project_path)
-        .map_err(|e| format!("Ошибка сканирования: {}", e))?;
+        .map_err(|e| format!("Ошибка сканирования: {e}"))?;
 
     // Если файлы не найдены, создаем демо-капсулы для демонстрации
     let mut capsules = std::collections::HashMap::new();
@@ -76,7 +76,7 @@ pub async fn analyze_project(
                 id: capsule_id,
                 name: name.to_string(),
                 capsule_type,
-                file_path: PathBuf::from(format!("{}/{}.rs", project_path, name)),
+                file_path: PathBuf::from(format!("{project_path}/{name}.rs")),
                 line_start: 1,
                 line_end: complexity,
                 complexity: (complexity / 5) as u32,
@@ -84,7 +84,7 @@ pub async fn analyze_project(
                 status: CapsuleStatus::Active,
                 layer: Some(layer_name.to_string()),
                 slogan: Some(slogan.to_string()),
-                summary: Some(format!("Демо-компонент {} для тестирования", name)),
+                summary: Some(format!("Демо-компонент {name} для тестирования")),
                 warnings: vec![],
                 dependencies: vec![],
                 dependents: vec![],
@@ -97,7 +97,7 @@ pub async fn analyze_project(
         }
     } else {
         // Создаем капсулы из найденных файлов
-        for (_i, file) in files.iter().enumerate() {
+        for file in files.iter() {
             let capsule_id = uuid::Uuid::new_v4();
             let layer_name = determine_layer(&file.path);
             
@@ -132,15 +132,15 @@ pub async fn analyze_project(
     let graph_builder = CapsuleGraphBuilder::new();
     let capsules_vec: Vec<Capsule> = capsules.into_values().collect();
     let graph = graph_builder.build_graph(&capsules_vec)
-        .map_err(|e| format!("Ошибка построения графа: {}", e))?;
+        .map_err(|e| format!("Ошибка построения графа: {e}"))?;
 
     let enricher = CapsuleEnricher::new();
     let enriched_graph = enricher.enrich_graph(&graph)
-        .map_err(|e| format!("Ошибка обогащения графа: {}", e))?;
+        .map_err(|e| format!("Ошибка обогащения графа: {e}"))?;
 
     let validator = ValidatorOptimizer::new();
     let validated_graph = validator.validate_and_optimize(&enriched_graph)
-        .map_err(|e| format!("Ошибка валидации: {}", e))?;
+        .map_err(|e| format!("Ошибка валидации: {e}"))?;
 
     let analysis_result = AnalysisResult {
         graph: validated_graph,
@@ -159,7 +159,7 @@ pub async fn analyze_project(
 
     // Возвращаем JSON результат вместо форматированной строки
     let json_result = serde_json::to_string(&analysis_result)
-        .map_err(|e| format!("Ошибка сериализации JSON: {}", e))?;
+        .map_err(|e| format!("Ошибка сериализации JSON: {e}"))?;
     
     Ok(json_result)
 }
@@ -215,15 +215,15 @@ pub async fn export_analysis(
             match format.as_str() {
                 "json" => {
                     let json_data = exporter.export_to_json(&result.graph)
-                        .map_err(|e| format!("Ошибка экспорта JSON: {}", e))?;
+                        .map_err(|e| format!("Ошибка экспорта JSON: {e}"))?;
                     Ok(json_data)
                 }
                 "yaml" => {
                     let yaml_data = exporter.export_to_yaml(&result.graph)
-                        .map_err(|e| format!("Ошибка экспорта YAML: {}", e))?;
+                        .map_err(|e| format!("Ошибка экспорта YAML: {e}"))?;
                     Ok(yaml_data)
                 }
-                _ => Err(format!("Неподдерживаемый формат: {}", format))
+                _ => Err(format!("Неподдерживаемый формат: {format}"))
             }
         }
         None => Err("Нет данных для экспорта".to_string()),
@@ -239,7 +239,7 @@ pub async fn generate_architecture_diagram(
         Some(result) => {
             let exporter = Exporter::new();
             let diagram = exporter.export_to_mermaid(&result.graph)
-                .map_err(|e| format!("Ошибка генерации диаграммы: {}", e))?;
+                .map_err(|e| format!("Ошибка генерации диаграммы: {e}"))?;
             Ok(diagram)
         }
         None => Err("Нет данных для генерации диаграммы".to_string()),
@@ -254,10 +254,10 @@ pub async fn get_project_structure(
         vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
         vec!["**/target/**".to_string(), "**/node_modules/**".to_string()],
         Some(5),
-    ).map_err(|e| format!("Ошибка создания сканера: {}", e))?;
+    ).map_err(|e| format!("Ошибка создания сканера: {e}"))?;
 
-    let files = scanner.scan_project(&std::path::Path::new(&project_path))
-        .map_err(|e| format!("Ошибка сканирования: {}", e))?;
+    let files = scanner.scan_project(std::path::Path::new(&project_path))
+        .map_err(|e| format!("Ошибка сканирования: {e}"))?;
 
     let mut file_types = std::collections::HashMap::new();
     let mut layers = std::collections::HashSet::new();
@@ -302,10 +302,10 @@ pub async fn validate_project_path(
         vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
         vec![],
         Some(3),
-    ).map_err(|e| format!("Ошибка создания сканера: {}", e))?;
+    ).map_err(|e| format!("Ошибка создания сканера: {e}"))?;
 
-    let files = scanner.scan_project(&std::path::Path::new(&project_path))
-        .map_err(|e| format!("Ошибка сканирования: {}", e))?;
+    let files = scanner.scan_project(std::path::Path::new(&project_path))
+        .map_err(|e| format!("Ошибка сканирования: {e}"))?;
 
     Ok(!files.is_empty())
 } 

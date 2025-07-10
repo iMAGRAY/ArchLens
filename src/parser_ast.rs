@@ -1,8 +1,6 @@
 use std::path::Path;
 use std::collections::HashMap;
-use std::fs;
 use crate::core::{FileType, Result};
-use crate::metadata_extractor::MetadataExtractor;
 
 // #ДОДЕЛАТЬ: Временная заглушка парсера - требует полной реализации tree-sitter
 // Исключены внешние зависимости tree-sitter для решения проблем линковки

@@ -148,11 +148,10 @@ impl ValidatorOptimizer {
                 warnings.push(AnalysisWarning {
                     level: Priority::Low,
                     message: format!(
-                        "Слой '{}' имеет низкую внутреннюю связность: {:.2}",
-                        layer_name, cohesion
+                        "Слой '{layer_name}' имеет низкую внутреннюю связность: {cohesion:.2}"
                     ),
                     capsule_id: None,
-                    suggestion: Some(format!("Пересмотрите архитектуру слоя '{}'", layer_name)),
+                    suggestion: Some(format!("Пересмотрите архитектуру слоя '{layer_name}'")),
                 });
             }
         }

@@ -1,13 +1,18 @@
 use std::path::Path;
 use std::collections::HashMap;
 use crate::core::{Result};
-use crate::parser_ast::{ParserAST, ASTElement, ASTElementType};
-use crate::core::{FileType, CapsuleType, Priority, CapsuleStatus};
+use crate::parser_ast::{ASTElement, ASTElementType};
 
 /// Экстрактор метаданных - извлекает дополнительную информацию из элементов
 #[derive(Debug)]
 pub struct MetadataExtractor {
     patterns: HashMap<String, Vec<String>>,
+}
+
+impl Default for MetadataExtractor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetadataExtractor {
@@ -52,7 +57,7 @@ impl MetadataExtractor {
                 element.content.contains(pattern) || element.name.contains(pattern)
             });
             if found {
-                metadata.insert(format!("has_{}", pattern_name), "true".to_string());
+                metadata.insert(format!("has_{pattern_name}"), "true".to_string());
             }
         }
         
@@ -133,16 +138,16 @@ impl MetadataExtractor {
                 } else if name.starts_with("process_") {
                     format!("Обрабатывает: {}", name.strip_prefix("process_").unwrap_or(name))
                 } else {
-                    format!("Функция: {}", name)
+                    format!("Функция: {name}")
                 }
             }
-            ASTElementType::Method => format!("Метод: {}", name),
-            ASTElementType::Struct => format!("Структура данных: {}", name),
-            ASTElementType::Enum => format!("Перечисление: {}", name),
-            ASTElementType::Class => format!("Класс: {}", name),
-            ASTElementType::Interface => format!("Интерфейс: {}", name),
-            ASTElementType::Module => format!("Модуль: {}", name),
-            _ => format!("Элемент: {}", name),
+            ASTElementType::Method => format!("Метод: {name}"),
+            ASTElementType::Struct => format!("Структура данных: {name}"),
+            ASTElementType::Enum => format!("Перечисление: {name}"),
+            ASTElementType::Class => format!("Класс: {name}"),
+            ASTElementType::Interface => format!("Интерфейс: {name}"),
+            ASTElementType::Module => format!("Модуль: {name}"),
+            _ => format!("Элемент: {name}"),
         };
         
         Ok(auto_slogan)

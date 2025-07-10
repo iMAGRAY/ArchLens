@@ -170,8 +170,7 @@ impl CapsuleEnricher {
         let todo_count = content.matches("TODO").count() + content.matches("FIXME").count();
         if todo_count > 3 {
             capsule.warnings.push(format!(
-                "Много незавершенных задач ({} TODO/FIXME).",
-                todo_count
+                "Много незавершенных задач ({todo_count} TODO/FIXME)."
             ));
         }
         
@@ -211,7 +210,7 @@ impl CapsuleEnricher {
                                     to_id: other_capsule.id,
                                     relation_type: RelationType::Uses,
                                     strength: 0.6,
-                                    description: Some(format!("Использует {}", dep_name)),
+                                    description: Some(format!("Использует {dep_name}")),
                                 });
                             }
                         }
@@ -227,7 +226,7 @@ impl CapsuleEnricher {
         let mut docs = Vec::new();
         
         // Rust doc comments
-        if file_path.extension().map_or(false, |e| e == "rs") {
+        if file_path.extension().is_some_and(|e| e == "rs") {
             for line in content.lines() {
                 let trimmed = line.trim();
                 if trimmed.starts_with("///") || trimmed.starts_with("//!") {
@@ -237,7 +236,7 @@ impl CapsuleEnricher {
         }
         
         // JavaScript/TypeScript JSDoc
-        if file_path.extension().map_or(false, |e| e == "js" || e == "ts" || e == "tsx") {
+        if file_path.extension().is_some_and(|e| e == "js" || e == "ts" || e == "tsx") {
             let jsdoc_regex = Regex::new(r"/\*\*(.*?)\*/").unwrap();
             for capture in jsdoc_regex.captures_iter(content) {
                 if let Some(doc) = capture.get(1) {
@@ -247,7 +246,7 @@ impl CapsuleEnricher {
         }
         
         // Python docstrings
-        if file_path.extension().map_or(false, |e| e == "py") {
+        if file_path.extension().is_some_and(|e| e == "py") {
             let docstring_regex = Regex::new(r#"[\"']{3}(.*?)[\"']{3}"#).unwrap();
             for capture in docstring_regex.captures_iter(content) {
                 if let Some(doc) = capture.get(1) {

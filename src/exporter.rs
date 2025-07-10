@@ -43,7 +43,7 @@ impl Exporter {
         // Создаем упрощенную структуру для JSON
         let json_graph = JsonGraph::from_capsule_graph(graph);
         let json = serde_json::to_string_pretty(&json_graph)
-            .map_err(|e| AnalysisError::Internal(format!("JSON serialization error: {}", e)))?;
+            .map_err(|e| AnalysisError::Internal(format!("JSON serialization error: {e}")))?;
         Ok(json)
     }
     
@@ -52,7 +52,7 @@ impl Exporter {
         
         yaml.push_str("# Архитектурный анализ проекта\n");
         yaml.push_str(&format!("created_at: '{}'\n", graph.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
-        yaml.push_str("\n");
+        yaml.push('\n');
         
         // Метрики
         yaml.push_str("metrics:\n");
@@ -63,12 +63,12 @@ impl Exporter {
         yaml.push_str(&format!("  cohesion_index: {:.2}\n", graph.metrics.cohesion_index));
         yaml.push_str(&format!("  cyclomatic_complexity: {}\n", graph.metrics.cyclomatic_complexity));
         yaml.push_str(&format!("  depth_levels: {}\n", graph.metrics.depth_levels));
-        yaml.push_str("\n");
+        yaml.push('\n');
         
         // Слои
         yaml.push_str("layers:\n");
         for (layer_name, capsule_ids) in &graph.layers {
-            yaml.push_str(&format!("  {}:\n", layer_name));
+            yaml.push_str(&format!("  {layer_name}:\n"));
             yaml.push_str(&format!("    count: {}\n", capsule_ids.len()));
             yaml.push_str("    capsules:\n");
             for capsule_id in capsule_ids {
@@ -80,7 +80,7 @@ impl Exporter {
                 }
             }
         }
-        yaml.push_str("\n");
+        yaml.push('\n');
         
         // Связи
         yaml.push_str("relations:\n");
@@ -92,7 +92,7 @@ impl Exporter {
                 yaml.push_str(&format!("    type: '{:?}'\n", relation.relation_type));
                 yaml.push_str(&format!("    strength: {:.2}\n", relation.strength));
                 if let Some(desc) = &relation.description {
-                    yaml.push_str(&format!("    description: '{}'\n", desc));
+                    yaml.push_str(&format!("    description: '{desc}'\n"));
                 }
             }
         }
@@ -105,7 +105,7 @@ impl Exporter {
         
         mermaid.push_str("graph TD\n");
         mermaid.push_str(&format!("    %% Архитектурная диаграмма ({} компонентов)\n", graph.capsules.len()));
-        mermaid.push_str("\n");
+        mermaid.push('\n');
         
         // Определяем стили для разных типов капсул
         mermaid.push_str("    %% Стили компонентов\n");
@@ -113,11 +113,11 @@ impl Exporter {
         mermaid.push_str("    classDef functionClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px\n");
         mermaid.push_str("    classDef structClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px\n");
         mermaid.push_str("    classDef classClass fill:#fff3e0,stroke:#e65100,stroke-width:2px\n");
-        mermaid.push_str("\n");
+        mermaid.push('\n');
         
         // Группируем по слоям
         for (layer_name, capsule_ids) in &graph.layers {
-            mermaid.push_str(&format!("    subgraph \"Слой: {}\"\n", layer_name));
+            mermaid.push_str(&format!("    subgraph \"Слой: {layer_name}\"\n"));
             
             for capsule_id in capsule_ids {
                 if let Some(capsule) = graph.capsules.get(capsule_id) {
@@ -126,23 +126,23 @@ impl Exporter {
                     
                     match capsule.capsule_type {
                         CapsuleType::Module => {
-                            mermaid.push_str(&format!("        {}[\"📦 {}\"]\n", node_id, display_name));
-                            mermaid.push_str(&format!("        {}:::moduleClass\n", node_id));
+                            mermaid.push_str(&format!("        {node_id}[\"📦 {display_name}\"]\n"));
+                            mermaid.push_str(&format!("        {node_id}:::moduleClass\n"));
                         }
                         CapsuleType::Function | CapsuleType::Method => {
-                            mermaid.push_str(&format!("        {}[\"⚙️ {}\"]\n", node_id, display_name));
-                            mermaid.push_str(&format!("        {}:::functionClass\n", node_id));
+                            mermaid.push_str(&format!("        {node_id}[\"⚙️ {display_name}\"]\n"));
+                            mermaid.push_str(&format!("        {node_id}:::functionClass\n"));
                         }
                         CapsuleType::Struct | CapsuleType::Enum => {
-                            mermaid.push_str(&format!("        {}[\"🏗️ {}\"]\n", node_id, display_name));
-                            mermaid.push_str(&format!("        {}:::structClass\n", node_id));
+                            mermaid.push_str(&format!("        {node_id}[\"🏗️ {display_name}\"]\n"));
+                            mermaid.push_str(&format!("        {node_id}:::structClass\n"));
                         }
                         CapsuleType::Class | CapsuleType::Interface => {
-                            mermaid.push_str(&format!("        {}[\"🎯 {}\"]\n", node_id, display_name));
-                            mermaid.push_str(&format!("        {}:::classClass\n", node_id));
+                            mermaid.push_str(&format!("        {node_id}[\"🎯 {display_name}\"]\n"));
+                            mermaid.push_str(&format!("        {node_id}:::classClass\n"));
                         }
                         _ => {
-                            mermaid.push_str(&format!("        {}[\"⚪ {}\"]\n", node_id, display_name));
+                            mermaid.push_str(&format!("        {node_id}[\"⚪ {display_name}\"]\n"));
                         }
                     }
                 }
@@ -172,7 +172,7 @@ impl Exporter {
                 };
                 
                 let label = if relation.strength > 0.7 { "strong" } else if relation.strength > 0.4 { "medium" } else { "weak" };
-                mermaid.push_str(&format!("    {} {}|{}| {}\n", from_id, arrow_style, label, to_id));
+                mermaid.push_str(&format!("    {from_id} {arrow_style}|{label}| {to_id}\n"));
             }
         }
         
@@ -280,11 +280,11 @@ impl Exporter {
         cot.push_str(&format!("- **Индекс связности**: {:.2}\n", graph.metrics.coupling_index));
         cot.push_str(&format!("- **Индекс сплоченности**: {:.2}\n", graph.metrics.cohesion_index));
         cot.push_str(&format!("- **Глубина зависимостей**: {}\n", graph.metrics.depth_levels));
-        cot.push_str("\n");
+        cot.push('\n');
         
         cot.push_str("## 🏗️ Архитектурные слои\n");
         for (layer_name, capsule_ids) in &graph.layers {
-            cot.push_str(&format!("### Слой: {}\n", layer_name));
+            cot.push_str(&format!("### Слой: {layer_name}\n"));
             cot.push_str(&format!("Компонентов в слое: {}\n\n", capsule_ids.len()));
             
             cot.push_str("**Ключевые компоненты:**\n");
@@ -294,7 +294,7 @@ impl Exporter {
                                          capsule.name, capsule.capsule_type, capsule.complexity));
                 }
             }
-            cot.push_str("\n");
+            cot.push('\n');
         }
         
         cot.push_str("## 🔗 Критические связи\n");
@@ -310,7 +310,7 @@ impl Exporter {
                                      relation.relation_type, relation.strength));
             }
         }
-        cot.push_str("\n");
+        cot.push('\n');
         
         cot.push_str("## 💡 Ключевые выводы\n");
         cot.push_str("1. **Структурная сложность**: ");
@@ -361,7 +361,7 @@ impl Exporter {
                                            capsule.name, capsule.capsule_type, capsule.complexity));
                 }
             }
-            prompt.push_str("\n");
+            prompt.push('\n');
         }
         
         prompt.push_str("## Метрики качества\n");
@@ -369,7 +369,7 @@ impl Exporter {
         prompt.push_str(&format!("- Связанность: {:.2}\n", graph.metrics.coupling_index));
         prompt.push_str(&format!("- Сплоченность: {:.2}\n", graph.metrics.cohesion_index));
         prompt.push_str(&format!("- Глубина зависимостей: {}\n", graph.metrics.depth_levels));
-        prompt.push_str("\n");
+        prompt.push('\n');
         
         prompt.push_str("## Задачи для анализа\n");
         prompt.push_str("1. Оцени архитектурные паттерны\n");

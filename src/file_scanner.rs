@@ -55,7 +55,7 @@ impl FileScanner {
         for result in walker.build() {
             match result {
                 Ok(entry) => {
-                    if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         if let Ok(metadata) = self.extract_file_metadata(entry.path()) {
                             if self.should_include_file(&metadata) {
                                 files.push(metadata);
@@ -342,7 +342,7 @@ fn glob_to_regex(pattern: &str) -> std::result::Result<Regex, regex::Error> {
     
     // Делаем паттерн более гибким - он может совпадать в любом месте пути
     let final_pattern = if pattern.starts_with("**/") {
-        format!(".*{}", regex_pattern)
+        format!(".*{regex_pattern}")
     } else {
         regex_pattern
     };
