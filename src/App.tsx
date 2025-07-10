@@ -145,7 +145,7 @@ function App() {
         <Toolbar>
           <ArchitectureIcon sx={{ mr: 2 }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Archinalysator - Анализатор архитектуры кода
+            ArchLens - Анализатор архитектуры кода
           </Typography>
         </Toolbar>
       </AppBar>
