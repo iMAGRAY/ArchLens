@@ -11,6 +11,7 @@ pub mod diff_analyzer;
 pub mod advanced_metrics;
 pub mod commands;
 pub mod cli;
+pub mod enrichment;  // Новый модульный подход к обогащению
 // pub mod integration_tests;  // Временно отключено для отладки
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ async fn main() {
     
     // Если есть аргументы командной строки, запускаем CLI режим
     if args.len() > 1 && args[1] != "--tauri" {
-        match cli::run_cli().await {
+        match cli::run().await {
             Ok(_) => std::process::exit(0),
             Err(e) => {
                 eprintln!("❌ Ошибка CLI: {}", e);
