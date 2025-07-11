@@ -11,8 +11,8 @@ const path = require('path');
 const os = require('os');
 
 const server = new Server({
-  name: "archlens-mcp-server",
-  version: "1.0.0"
+  name: "archlens-mcp-server", 
+  version: "1.0.1"
 }, {
   capabilities: { tools: {} }
 });
@@ -116,9 +116,9 @@ async function runArchlensCommand(args, commandType = 'generic') {
 async function handleAnalyzeProject(args) {
   const { 
     project_path,
-    include_patterns = ["**/*.rs", "**/*.ts", "**/*.js", "**/*.py"],
-    exclude_patterns = ["**/target/**", "**/node_modules/**", "**/.git/**"],
-    max_depth = 10,
+    include_patterns = ["**/*.rs", "**/*.ts", "**/*.js", "**/*.py", "**/*.java", "**/*.cpp", "**/*.c", "**/*.go", "**/*.php", "**/*.rb", "**/*.cs", "**/*.kt", "**/*.swift", "**/*.dart", "**/*.vue", "**/*.jsx", "**/*.tsx", "**/*.html", "**/*.css", "**/*.scss", "**/*.sass", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml", "**/*.md", "**/*.txt"],
+    exclude_patterns = ["**/target/**", "**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/.nuxt/**", "**/coverage/**", "**/tmp/**", "**/temp/**"],
+    max_depth = 20,  // Увеличиваем глубину сканирования
     analyze_dependencies = true,
     extract_comments = true,
     generate_summaries = true
@@ -285,7 +285,7 @@ async function handleGetProjectStructure(args) {
   const { 
     project_path,
     show_metrics = true,
-    max_files = 100
+    max_files = 1000  // Увеличиваем до 1000 файлов
   } = args;
   
   try {
@@ -445,6 +445,7 @@ async function handleGenerateDiagram(args) {
 function createManualStructure(projectPath, maxFiles) {
   const structure = {
     total_files: 0,
+    total_lines: 0,
     file_types: {},
     layers: [],
     files: []
@@ -452,33 +453,59 @@ function createManualStructure(projectPath, maxFiles) {
   
   try {
     const scanDirectory = (dir, depth = 0) => {
-      if (depth > 5 || structure.files.length >= maxFiles) return;
+      // Убираем жесткое ограничение глубины, увеличиваем до 15 уровней
+      if (depth > 15) return;
       
       const items = fs.readdirSync(dir);
       
       for (const item of items) {
         const fullPath = path.join(dir, item);
-        const stat = fs.statSync(fullPath);
         
-        if (stat.isDirectory()) {
-          if (!item.startsWith('.') && item !== 'node_modules' && item !== 'target') {
-            scanDirectory(fullPath, depth + 1);
-          }
-        } else {
-          const ext = path.extname(item).toLowerCase();
-          const relativePath = path.relative(projectPath, fullPath);
+        try {
+          const stat = fs.statSync(fullPath);
           
-          structure.total_files++;
-          structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
-          
-          if (structure.files.length < maxFiles) {
-            structure.files.push({
-              path: relativePath,
-              name: item,
-              extension: ext,
-              size: stat.size
-            });
+          if (stat.isDirectory()) {
+            // Расширяем список игнорируемых папок, но не ограничиваем сильно
+            const skipDirs = ['node_modules', '.git', 'target', 'dist', 'build', '.next', '.nuxt'];
+            if (!skipDirs.includes(item) && !item.startsWith('.')) {
+              scanDirectory(fullPath, depth + 1);
+            }
+          } else {
+            const ext = path.extname(item).toLowerCase();
+            const relativePath = path.relative(projectPath, fullPath);
+            
+            structure.total_files++;
+            structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
+            
+            // Добавляем файлы без жесткого ограничения
+            if (structure.files.length < maxFiles) {
+              // Подсчитываем строки кода для текстовых файлов
+              let lineCount = 0;
+              try {
+                const textExtensions = ['.rs', '.ts', '.js', '.py', '.java', '.cpp', '.c', '.go', '.php', '.rb', '.cs', '.kt', '.swift', '.dart', '.vue', '.jsx', '.tsx', '.html', '.css', '.scss', '.sass', '.json', '.yaml', '.yml', '.xml', '.md', '.txt'];
+                if (textExtensions.includes(ext) && stat.size < 1000000) { // Анализируем только файлы <1MB
+                  const content = fs.readFileSync(fullPath, 'utf8');
+                  lineCount = content.split('\n').length;
+                }
+              } catch (readError) {
+                lineCount = 0;
+              }
+              
+                              structure.files.push({
+                  path: relativePath,
+                  name: item,
+                  extension: ext,
+                  size: stat.size,
+                  lines: lineCount
+                });
+                
+                // Добавляем к общему количеству строк
+                structure.total_lines += lineCount;
+            }
           }
+        } catch (statError) {
+          // Игнорируем ошибки доступа к отдельным файлам
+          console.error(`[MCP] Ошибка доступа к файлу ${fullPath}: ${statError.message}`);
         }
       }
     };
@@ -486,7 +513,7 @@ function createManualStructure(projectPath, maxFiles) {
     scanDirectory(projectPath);
     
     // Определяем слои по структуре папок
-    const commonLayers = ['src', 'lib', 'components', 'utils', 'api', 'core', 'ui'];
+    const commonLayers = ['src', 'lib', 'components', 'utils', 'api', 'core', 'ui', 'services', 'models', 'views', 'controllers'];
     structure.layers = commonLayers.filter(layer => {
       return fs.existsSync(path.join(projectPath, layer));
     });
@@ -619,7 +646,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "boolean"
           },
           max_files: {
-            description: "Максимальное количество файлов в выводе (по умолчанию 50)",
+            description: "Максимальное количество файлов в выводе (по умолчанию 1000)",
             type: "integer"
           }
         },
@@ -908,7 +935,7 @@ ${diagramContent}
     } else if (name === "get_project_structure") {
       const projectPath = args.project_path || '.';
       const showMetrics = args.show_metrics || false;
-      const maxFiles = args.max_files || 50;
+      const maxFiles = args.max_files || 1000;  // Увеличиваем до 1000 файлов
       
       const structureArgs = ['structure', projectPath];
       
@@ -942,7 +969,8 @@ ${diagramContent}
 
 ## 📊 Общая статистика
 - **Всего файлов:** ${structureData.total_files || 'н/д'}
-- **Показано файлов:** ${Math.min(maxFiles, structureData.total_files || 0)}
+- **Всего строк кода:** ${structureData.total_lines || 'н/д'}
+- **Показано файлов:** ${Math.min(maxFiles, structureData.total_files || 0)} (лимит: ${maxFiles})
 
 ## 🗂️ Типы файлов
 ${structureData.file_types ? Object.entries(structureData.file_types)
@@ -956,7 +984,7 @@ ${structureData.layers ? structureData.layers.map(layer => `- **${layer}**`).joi
 ## 📄 Ключевые файлы (топ ${Math.min(15, maxFiles)})
 ${structureData.files ? structureData.files
   .slice(0, 15)
-  .map(file => `- \`${file.path}\` (${file.extension}, ${(file.size / 1024).toFixed(1)}KB)`)
+  .map(file => `- \`${file.path}\` (${file.extension}, ${(file.size / 1024).toFixed(1)}KB${file.lines > 0 ? `, ${file.lines} строк` : ''})`)
   .join('\n') : 'Файлы недоступны'}
 
 ${structureData.files && structureData.files.length > 15 ? `\n... и еще ${structureData.files.length - 15} файл(ов)` : ''}
@@ -1063,8 +1091,8 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  console.error("🏗️ ArchLens MCP Server v1.0.0 запущен");
-  console.error("✅ Готов к анализу архитектуры кода для AI");
+  console.error("🏗️ ArchLens MCP Server v1.0.1 запущен");
+  console.error("✅ Готов к анализу архитектуры кода для AI (улучшенные лимиты)");
   
   process.stdin.resume();
 }

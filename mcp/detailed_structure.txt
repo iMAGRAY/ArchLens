@@ -1,0 +1,212 @@
+📊 Структура проекта: ..
+{
+  "total_files": 52,
+  "file_types": {
+    "md": 3,
+    "json": 2,
+    "exe": 1,
+    "rs": 28,
+    "toml": 1,
+    "mdc": 1,
+    "lock": 1,
+    "png": 1,
+    "ico": 1,
+    "cjs": 1,
+    "txt": 2,
+    "svg": 3
+  },
+  "layers": [
+    "UI",
+    "Core",
+    "CLI",
+    "Model"
+  ],
+  "files": [
+    {
+      "path": "build.rs",
+      "name": "build.rs",
+      "extension": "rs",
+      "size": 41
+    },
+    {
+      "path": "Cargo.toml",
+      "name": "Cargo.toml",
+      "extension": "toml",
+      "size": 1410
+    },
+    {
+      "path": "mcp\\package-lock.json",
+      "name": "package-lock.json",
+      "extension": "json",
+      "size": 5841
+    },
+    {
+      "path": "mcp\\package.json",
+      "name": "package.json",
+      "extension": "json",
+      "size": 2008
+    },
+    {
+      "path": "src\\advanced_metrics.rs",
+      "name": "advanced_metrics.rs",
+      "extension": "rs",
+      "size": 27333
+    },
+    {
+      "path": "src\\capsule_constructor.rs",
+      "name": "capsule_constructor.rs",
+      "extension": "rs",
+      "size": 23250
+    },
+    {
+      "path": "src\\capsule_enricher.rs",
+      "name": "capsule_enricher.rs",
+      "extension": "rs",
+      "size": 42703
+    },
+    {
+      "path": "src\\capsule_graph_builder.rs",
+      "name": "capsule_graph_builder.rs",
+      "extension": "rs",
+      "size": 32717
+    },
+    {
+      "path": "src\\cli\\diagram.rs",
+      "name": "diagram.rs",
+      "extension": "rs",
+      "size": 13131
+    },
+    {
+      "path": "src\\cli\\export.rs",
+      "name": "export.rs",
+      "extension": "rs",
+      "size": 20005
+    },
+    {
+      "path": "src\\cli\\handlers.rs",
+      "name": "handlers.rs",
+      "extension": "rs",
+      "size": 6017
+    },
+    {
+      "path": "src\\cli\\mod.rs",
+      "name": "mod.rs",
+      "extension": "rs",
+      "size": 2597
+    },
+    {
+      "path": "src\\cli\\parser.rs",
+      "name": "parser.rs",
+      "extension": "rs",
+      "size": 8411
+    },
+    {
+      "path": "src\\cli\\stats.rs",
+      "name": "stats.rs",
+      "extension": "rs",
+      "size": 7709
+    },
+    {
+      "path": "src\\commands.rs",
+      "name": "commands.rs",
+      "extension": "rs",
+      "size": 26292
+    },
+    {
+      "path": "src\\diff_analyzer.rs",
+      "name": "diff_analyzer.rs",
+      "extension": "rs",
+      "size": 18018
+    },
+    {
+      "path": "src\\enrichment\\code_smells.rs",
+      "name": "code_smells.rs",
+      "extension": "rs",
+      "size": 26662
+    },
+    {
+      "path": "src\\enrichment\\content_analysis.rs",
+      "name": "content_analysis.rs",
+      "extension": "rs",
+      "size": 13598
+    },
+    {
+      "path": "src\\enrichment\\dependency_analysis.rs",
+      "name": "dependency_analysis.rs",
+      "extension": "rs",
+      "size": 11190
+    },
+    {
+      "path": "src\\enrichment\\mod.rs",
+      "name": "mod.rs",
+      "extension": "rs",
+      "size": 544
+    },
+    {
+      "path": "src\\enrichment\\pattern_detection.rs",
+      "name": "pattern_detection.rs",
+      "extension": "rs",
+      "size": 15018
+    },
+    {
+      "path": "src\\enrichment\\quality_metrics.rs",
+      "name": "quality_metrics.rs",
+      "extension": "rs",
+      "size": 13441
+    },
+    {
+      "path": "src\\enrichment\\semantic_analysis.rs",
+      "name": "semantic_analysis.rs",
+      "extension": "rs",
+      "size": 9853
+    },
+    {
+      "path": "src\\exporter.rs",
+      "name": "exporter.rs",
+      "extension": "rs",
+      "size": 22885
+    },
+    {
+      "path": "src\\file_scanner.rs",
+      "name": "file_scanner.rs",
+      "extension": "rs",
+      "size": 18064
+    },
+    {
+      "path": "src\\lib.rs",
+      "name": "lib.rs",
+      "extension": "rs",
+      "size": 531
+    },
+    {
+      "path": "src\\main.rs",
+      "name": "main.rs",
+      "extension": "rs",
+      "size": 1248
+    },
+    {
+      "path": "src\\metadata_extractor.rs",
+      "name": "metadata_extractor.rs",
+      "extension": "rs",
+      "size": 9347
+    },
+    {
+      "path": "src\\parser_ast.rs",
+      "name": "parser_ast.rs",
+      "extension": "rs",
+      "size": 30443
+    },
+    {
+      "path": "src\\types.rs",
+      "name": "types.rs",
+      "extension": "rs",
+      "size": 9831
+    },
+    {
+      "path": "src\\validator_optimizer.rs",
+      "name": "validator_optimizer.rs",
+      "extension": "rs",
+      "size": 33920
+    }
+  ]
+}

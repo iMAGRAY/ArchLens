@@ -6,82 +6,82 @@ graph TD
     classDef utility fill:#ffe66d,stroke:#fdcb6e,stroke-width:2px
     classDef config fill:#a29bfe,stroke:#6c5ce7,stroke-width:2px
 
-    root_src_cli_handlers["root/src/cli/handlers"]
-    class root_src_cli_handlers service
-    root_src_commands["root/src/commands"]
-    class root_src_commands core
     root_src_enrichment_dependency_analysis["root/src/enrichment/dependency_analysis"]
     class root_src_enrichment_dependency_analysis core
-    root_src_capsule_enricher["root/src/capsule_enricher"]
-    class root_src_capsule_enricher core
+    root_src_exporter["root/src/exporter"]
+    class root_src_exporter core
+    archlens["archlens"]
+    class archlens core
+    root_src_enrichment_content_analysis["root/src/enrichment/content_analysis"]
+    class root_src_enrichment_content_analysis core
+    serde_json["serde_json"]
+    class serde_json core
+    root_src_types["root/src/types"]
+    class root_src_types core
+    root_src_validator_optimizer["root/src/validator_optimizer"]
+    class root_src_validator_optimizer core
+    root_src_cli_parser["root/src/cli/parser"]
+    class root_src_cli_parser core
+    root_src_capsule_graph_builder["root/src/capsule_graph_builder"]
+    class root_src_capsule_graph_builder core
+    chrono["chrono"]
+    class chrono core
+    uuid["uuid"]
+    class uuid core
+    tauri["tauri"]
+    class tauri core
+    serde["serde"]
+    class serde core
+    root_src_commands["root/src/commands"]
+    class root_src_commands core
+    root_src_enrichment_pattern_detection["root/src/enrichment/pattern_detection"]
+    class root_src_enrichment_pattern_detection core
+    super["super"]
+    class super core
     root_src_file_scanner["root/src/file_scanner"]
     class root_src_file_scanner core
     walkdir["walkdir"]
     class walkdir core
-    root_src_exporter["root/src/exporter"]
-    class root_src_exporter core
-    super["super"]
-    class super core
-    root_src_test_commands["root/src/test_commands"]
-    class root_src_test_commands core
-    root_src_validator_optimizer["root/src/validator_optimizer"]
-    class root_src_validator_optimizer core
-    root_src_cli_export["root/src/cli/export"]
-    class root_src_cli_export core
-    serde["serde"]
-    class serde core
-    root_src_cli_stats["root/src/cli/stats"]
-    class root_src_cli_stats core
-    root_src_enrichment_quality_metrics["root/src/enrichment/quality_metrics"]
-    class root_src_enrichment_quality_metrics core
-    root_src_types["root/src/types"]
-    class root_src_types core
-    root_src_parser_ast["root/src/parser_ast"]
-    class root_src_parser_ast core
-    root_src_advanced_metrics["root/src/advanced_metrics"]
-    class root_src_advanced_metrics core
-    root_src_enrichment_pattern_detection["root/src/enrichment/pattern_detection"]
-    class root_src_enrichment_pattern_detection core
-    root_src_enrichment_semantic_analysis["root/src/enrichment/semantic_analysis"]
-    class root_src_enrichment_semantic_analysis core
-    tauri["tauri"]
-    class tauri core
-    regex["regex"]
-    class regex core
+    root_src_capsule_enricher["root/src/capsule_enricher"]
+    class root_src_capsule_enricher core
     root_src_capsule_constructor["root/src/capsule_constructor"]
     class root_src_capsule_constructor core
+    crate["crate"]
+    class crate core
+    root_src_test_commands["root/src/test_commands"]
+    class root_src_test_commands core
+    root_src_advanced_metrics["root/src/advanced_metrics"]
+    class root_src_advanced_metrics core
+    root_src_metadata_extractor["root/src/metadata_extractor"]
+    class root_src_metadata_extractor core
+    root_src_cli_diagram["root/src/cli/diagram"]
+    class root_src_cli_diagram core
+    root_src_cli_stats["root/src/cli/stats"]
+    class root_src_cli_stats core
+    root_src_lib["root/src/lib"]
+    class root_src_lib core
+    root_src_enrichment_quality_metrics["root/src/enrichment/quality_metrics"]
+    class root_src_enrichment_quality_metrics core
     root_src_cli_mod["root/src/cli/mod"]
     class root_src_cli_mod core
     std["std"]
     class std core
-    root_src_cli_diagram["root/src/cli/diagram"]
-    class root_src_cli_diagram core
-    archlens["archlens"]
-    class archlens core
-    root_src_capsule_graph_builder["root/src/capsule_graph_builder"]
-    class root_src_capsule_graph_builder core
-    uuid["uuid"]
-    class uuid core
     root_src_diff_analyzer["root/src/diff_analyzer"]
     class root_src_diff_analyzer core
-    root_src_lib["root/src/lib"]
-    class root_src_lib core
+    root_src_cli_export["root/src/cli/export"]
+    class root_src_cli_export core
     root_src_enrichment_code_smells["root/src/enrichment/code_smells"]
     class root_src_enrichment_code_smells core
-    root_src_enrichment_content_analysis["root/src/enrichment/content_analysis"]
-    class root_src_enrichment_content_analysis core
+    root_src_parser_ast["root/src/parser_ast"]
+    class root_src_parser_ast core
+    regex["regex"]
+    class regex core
+    root_src_cli_handlers["root/src/cli/handlers"]
+    class root_src_cli_handlers service
+    root_src_enrichment_semantic_analysis["root/src/enrichment/semantic_analysis"]
+    class root_src_enrichment_semantic_analysis core
     root_src_main["root/src/main"]
     class root_src_main core
-    root_src_metadata_extractor["root/src/metadata_extractor"]
-    class root_src_metadata_extractor core
-    serde_json["serde_json"]
-    class serde_json core
-    crate["crate"]
-    class crate core
-    root_src_cli_parser["root/src/cli/parser"]
-    class root_src_cli_parser core
-    chrono["chrono"]
-    class chrono core
 
     root_src_advanced_metrics -.-> crate
     root_src_advanced_metrics -.-> regex
@@ -162,43 +162,43 @@ graph TD
 
     %% Группировка модулей
     subgraph Core["🔧 Core Modules"]
-        root_src_commands
         root_src_enrichment_dependency_analysis
-        root_src_capsule_enricher
+        root_src_exporter
+        archlens
+        root_src_enrichment_content_analysis
+        serde_json
+        root_src_types
+        root_src_validator_optimizer
+        root_src_cli_parser
+        root_src_capsule_graph_builder
+        chrono
+        uuid
+        tauri
+        serde
+        root_src_commands
+        root_src_enrichment_pattern_detection
+        super
         root_src_file_scanner
         walkdir
-        root_src_exporter
-        super
-        root_src_test_commands
-        root_src_validator_optimizer
-        root_src_cli_export
-        serde
-        root_src_cli_stats
-        root_src_enrichment_quality_metrics
-        root_src_types
-        root_src_parser_ast
-        root_src_advanced_metrics
-        root_src_enrichment_pattern_detection
-        root_src_enrichment_semantic_analysis
-        tauri
-        regex
+        root_src_capsule_enricher
         root_src_capsule_constructor
+        crate
+        root_src_test_commands
+        root_src_advanced_metrics
+        root_src_metadata_extractor
+        root_src_cli_diagram
+        root_src_cli_stats
+        root_src_lib
+        root_src_enrichment_quality_metrics
         root_src_cli_mod
         std
-        root_src_cli_diagram
-        archlens
-        root_src_capsule_graph_builder
-        uuid
         root_src_diff_analyzer
-        root_src_lib
+        root_src_cli_export
         root_src_enrichment_code_smells
-        root_src_enrichment_content_analysis
+        root_src_parser_ast
+        regex
+        root_src_enrichment_semantic_analysis
         root_src_main
-        root_src_metadata_extractor
-        serde_json
-        crate
-        root_src_cli_parser
-        chrono
     end
     subgraph Services["🚀 Services"]
         root_src_cli_handlers
