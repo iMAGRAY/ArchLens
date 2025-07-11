@@ -1,13 +1,11 @@
-use std::path::Path;
-use std::fs;
-use regex::Regex;
-use ignore::WalkBuilder;
-use crate::core::{FileMetadata, FileType, CapsuleStatus, AnalysisError, Result};
+use crate::types::{FileMetadata, FileType, CapsuleStatus, AnalysisError, Result};
+use std::{fs, path::Path};
+use walkdir::WalkDir;
 
 /// Сканер файлов проекта
 pub struct FileScanner {
-    include_patterns: Vec<Regex>,
-    exclude_patterns: Vec<Regex>,
+    include_patterns: Vec<regex::Regex>,
+    exclude_patterns: Vec<regex::Regex>,
     max_depth: Option<usize>,
 }
 
@@ -38,51 +36,105 @@ impl FileScanner {
 
     /// Сканирует проект и возвращает метаданные всех подходящих файлов
     pub fn scan_project(&self, project_path: &Path) -> Result<Vec<FileMetadata>> {
-        if !project_path.exists() {
-            return Err(AnalysisError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Путь не существует: {}", project_path.display()),
-            )));
-        }
+        self.scan_files(project_path)
+    }
 
+    /// Сканирует файлы в директории (основной метод)
+    pub fn scan_files(&self, project_path: &Path) -> Result<Vec<FileMetadata>> {
         let mut files = Vec::new();
-        let mut walker = WalkBuilder::new(project_path);
-        
-        if let Some(depth) = self.max_depth {
-            walker.max_depth(Some(depth));
+        self.scan_directory_recursive(project_path, &mut files, 0)?;
+        Ok(files)
+    }
+
+    /// Версия scan_files без параметров (для совместимости)
+    pub fn scan_files_no_params(&self) -> Result<Vec<FileMetadata>> {
+        Err(AnalysisError::GenericError("Не указан путь для сканирования".to_string()))
+    }
+
+    /// Рекурсивно сканирует директории
+    fn scan_directory_recursive(&self, dir: &Path, files: &mut Vec<FileMetadata>, depth: usize) -> Result<()> {
+        if let Some(max_depth) = self.max_depth {
+            if depth >= max_depth {
+                return Ok(());
+            }
         }
 
-        for result in walker.build() {
-            match result {
-                Ok(entry) => {
-                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                        if let Ok(metadata) = self.extract_file_metadata(entry.path()) {
-                            if self.should_include_file(&metadata) {
-                                files.push(metadata);
-                            }
+        if !dir.is_dir() {
+            return Ok(());
+        }
+
+        // Безопасное чтение директории с обработкой ошибок доступа
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("⚠️ Предупреждение: Не удалось получить доступ к директории {:?}: {}", dir, e);
+                return Ok(()); // Пропускаем недоступные директории
+            }
+        };
+
+        for entry_result in entries {
+            let entry = match entry_result {
+                Ok(entry) => entry,
+                Err(e) => {
+                    eprintln!("⚠️ Предупреждение: Ошибка чтения элемента в {:?}: {}", dir, e);
+                    continue; // Пропускаем проблемные элементы
+                }
+            };
+            
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Рекурсивно сканируем поддиректории, но не прерываем работу при ошибках
+                if let Err(e) = self.scan_directory_recursive(&path, files, depth + 1) {
+                    eprintln!("⚠️ Предупреждение: Ошибка сканирования директории {:?}: {}", path, e);
+                }
+            } else {
+                match self.extract_file_metadata(&path) {
+                    Ok(metadata) => {
+                        if self.should_include_file(&metadata) {
+                            files.push(metadata);
                         }
                     }
-                }
-                Err(err) => {
-                    tracing::warn!("Ошибка при сканировании файла: {}", err);
+                    Err(e) => {
+                        // Более детальная информация об ошибках доступа к файлам
+                        eprintln!("⚠️ Предупреждение: Не удалось прочитать файл {:?}: {}", path, e);
+                    }
                 }
             }
         }
 
-        Ok(files)
+        Ok(())
     }
 
     /// Извлекает метаданные из файла
     fn extract_file_metadata(&self, path: &Path) -> Result<FileMetadata> {
-        let metadata = fs::metadata(path)?;
+        let metadata = match fs::metadata(path) {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                return Err(AnalysisError::GenericError(format!("Не удалось получить метаданные файла {:?}: {}", path, e)));
+            }
+        };
+        
         let file_type = self.detect_file_type(path);
         
-        let content = fs::read_to_string(path).unwrap_or_default();
+        let content = match fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) => {
+                // Логируем ошибку, но не прерываем работу
+                eprintln!("⚠️ Предупреждение: Не удалось прочитать содержимое файла {:?}: {}", path, e);
+                String::new()
+            }
+        };
+        
         let lines_count = content.lines().count();
 
-        let last_modified = metadata
-            .modified()?
-            .into();
+        let last_modified = match metadata.modified() {
+            Ok(time) => time.into(),
+            Err(e) => {
+                eprintln!("⚠️ Предупреждение: Не удалось получить время модификации файла {:?}: {}", path, e);
+                std::time::SystemTime::now().into()
+            }
+        };
 
         let (imports, exports) = self.extract_imports_exports(&content, &file_type);
 
@@ -167,15 +219,14 @@ impl FileScanner {
     /// Определяет статус файла
     fn detect_status(&self, content: &str) -> CapsuleStatus {
         let content_lower = content.to_lowercase();
-        
-        if content_lower.contains("@deprecated") || content_lower.contains("deprecated") {
-            CapsuleStatus::Deprecated
-        } else if content_lower.contains("@experimental") || content_lower.contains("experimental") {
-            CapsuleStatus::Experimental
-        } else if content_lower.contains("@internal") || content_lower.contains("internal") {
-            CapsuleStatus::Internal
+        if content_lower.contains("test") || content_lower.contains("#[test]") || content_lower.contains("describe(") {
+            CapsuleStatus::Pending
+        } else if content_lower.contains("deprecated") || content_lower.contains("@deprecated") {
+            CapsuleStatus::Archived
+        } else if content_lower.contains("todo") || content_lower.contains("fixme") {
+            CapsuleStatus::Pending
         } else {
-            CapsuleStatus::Public
+            CapsuleStatus::Active
         }
     }
 
@@ -283,7 +334,7 @@ impl FileScanner {
 }
 
 /// Конвертирует glob паттерн в regex
-fn glob_to_regex(pattern: &str) -> std::result::Result<Regex, regex::Error> {
+fn glob_to_regex(pattern: &str) -> std::result::Result<regex::Regex, regex::Error> {
     let mut regex_pattern = String::new();
     let chars: Vec<char> = pattern.chars().collect();
     let mut i = 0;
@@ -347,7 +398,7 @@ fn glob_to_regex(pattern: &str) -> std::result::Result<Regex, regex::Error> {
         regex_pattern
     };
     
-    Regex::new(&final_pattern)
+    regex::Regex::new(&final_pattern)
 }
 
 /// Извлекает имя экспорта из Rust строки

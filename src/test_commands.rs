@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::*;
+    use crate::types::*;
     use crate::file_scanner::FileScanner;
     use crate::capsule_graph_builder::CapsuleGraphBuilder;
     use crate::capsule_enricher::CapsuleEnricher;
@@ -364,13 +364,13 @@ mod tests {
         };
         
         // Создаем AnalysisResult
-        let analysis_result = crate::core::AnalysisResult {
+        let analysis_result = crate::types::AnalysisResult {
             graph,
             warnings: vec![],
             recommendations: vec![
                 "Тестовая рекомендация".to_string(),
             ],
-            export_formats: vec![crate::core::ExportFormat::Json],
+            export_formats: vec![crate::types::ExportFormat::JSON],
         };
         
         // Тестируем сериализацию
@@ -386,7 +386,7 @@ mod tests {
                 assert!(json.contains("TestCapsule"));
                 
                 // Пытаемся десериализовать обратно
-                let parsed: std::result::Result<crate::core::AnalysisResult, serde_json::Error> = serde_json::from_str(&json);
+                let parsed: std::result::Result<crate::types::AnalysisResult, serde_json::Error> = serde_json::from_str(&json);
                 match parsed {
                     Ok(parsed_result) => {
                         println!("✅ JSON десериализация работает");

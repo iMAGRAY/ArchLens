@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::collections::HashMap;
-use crate::core::{Result};
+use crate::types::{Result};
 use crate::parser_ast::{ASTElement, ASTElementType};
 
 /// Экстрактор метаданных - извлекает дополнительную информацию из элементов

@@ -1,0 +1,403 @@
+graph TD
+    A[] --> B[src]
+    B --> svg[.svg files: 4]
+    B --> json[.json files: 19]
+    B --> ts[.ts files: 2]
+    B --> js[.js files: 15]
+    B --> png[.png files: 1]
+    B --> exe[.exe files: 4]
+    B --> toml[.toml files: 1]
+    B --> cjs[.cjs files: 5]
+    B --> md[.md files: 19]
+    B --> tgz[.tgz files: 2]
+    B --> py[.py files: 3]
+    B --> gz[.gz files: 1]
+    B --> mmd[.mmd files: 2]
+    B --> rs[.rs files: 18]
+    B --> ico[.ico files: 1]
+    B --> lock[.lock files: 1]
+    B --> tsx[.tsx files: 2]
+    B --> html[.html files: 2]
+
+    %% Связи между модулями
+    fix_all_warnings[fix_all_warnings]
+    os[os]
+    fix_all_warnings --> os
+    fix_all_warnings[fix_all_warnings]
+    re[re]
+    fix_all_warnings --> re
+    fix_analysis_warnings[fix_analysis_warnings]
+    os[os]
+    fix_analysis_warnings --> os
+    fix_analysis_warnings[fix_analysis_warnings]
+    re[re]
+    fix_analysis_warnings --> re
+    fix_chrono[fix_chrono]
+    os[os]
+    fix_chrono --> os
+    fix_chrono[fix_chrono]
+    re[re]
+    fix_chrono --> re
+    src_advanced_metrics[src::advanced_metrics]
+    crate[crate]
+    src_advanced_metrics -.-> crate
+    src_advanced_metrics[src::advanced_metrics]
+    std[std]
+    src_advanced_metrics -.-> std
+    src_advanced_metrics[src::advanced_metrics]
+    regex[regex]
+    src_advanced_metrics -.-> regex
+    src_advanced_metrics[src::advanced_metrics]
+    serde[serde]
+    src_advanced_metrics -.-> serde
+    src_advanced_metrics[src::advanced_metrics]
+    crate[crate]
+    src_advanced_metrics -.-> crate
+    src_capsule_constructor[src::capsule_constructor]
+    std[std]
+    src_capsule_constructor -.-> std
+    src_capsule_constructor[src::capsule_constructor]
+    crate[crate]
+    src_capsule_constructor -.-> crate
+    src_capsule_constructor[src::capsule_constructor]
+    std[std]
+    src_capsule_constructor -.-> std
+    src_capsule_constructor[src::capsule_constructor]
+    chrono[chrono]
+    src_capsule_constructor -.-> chrono
+    src_capsule_constructor[src::capsule_constructor]
+    uuid[uuid]
+    src_capsule_constructor -.-> uuid
+    src_capsule_enricher[src::capsule_enricher]
+    crate[crate]
+    src_capsule_enricher -.-> crate
+    src_capsule_enricher[src::capsule_enricher]
+    std[std]
+    src_capsule_enricher -.-> std
+    src_capsule_enricher[src::capsule_enricher]
+    regex[regex]
+    src_capsule_enricher -.-> regex
+    src_capsule_enricher[src::capsule_enricher]
+    std[std]
+    src_capsule_enricher -.-> std
+    src_capsule_enricher[src::capsule_enricher]
+    uuid[uuid]
+    src_capsule_enricher -.-> uuid
+    src_capsule_enricher[src::capsule_enricher]
+    crate[crate]
+    src_capsule_enricher -.-> crate
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    crate[crate]
+    src_capsule_graph_builder -.-> crate
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    std[std]
+    src_capsule_graph_builder -.-> std
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    uuid[uuid]
+    src_capsule_graph_builder -.-> uuid
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    regex[regex]
+    src_capsule_graph_builder -.-> regex
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    std[std]
+    src_capsule_graph_builder -.-> std
+    src_capsule_graph_builder[src::capsule_graph_builder]
+    crate[crate]
+    src_capsule_graph_builder -.-> crate
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    serde_json[serde_json]
+    src_cli -.-> serde_json
+    src_cli[src::cli]
+    chrono[chrono]
+    src_cli -.-> chrono
+    src_cli[src::cli]
+    uuid[uuid]
+    src_cli -.-> uuid
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    crate[crate]
+    src_cli -.-> crate
+    src_cli[src::cli]
+    std[std]
+    src_cli -.-> std
+    src_commands[src::commands]
+    std[std]
+    src_commands -.-> std
+    src_commands[src::commands]
+    tauri[tauri]
+    src_commands -.-> tauri
+    src_commands[src::commands]
+    std[std]
+    src_commands -.-> std
+    src_commands[src::commands]
+    std[std]
+    src_commands -.-> std
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    crate[crate]
+    src_commands -.-> crate
+    src_commands[src::commands]
+    std[std]
+    src_commands -.-> std
+    src_commands[src::commands]
+    uuid[uuid]
+    src_commands -.-> uuid
+    src_commands[src::commands]
+    std[std]
+    src_commands -.-> std
+    src_diff_analyzer[src::diff_analyzer]
+    crate[crate]
+    src_diff_analyzer -.-> crate
+    src_diff_analyzer[src::diff_analyzer]
+    std[std]
+    src_diff_analyzer -.-> std
+    src_diff_analyzer[src::diff_analyzer]
+    chrono[chrono]
+    src_diff_analyzer -.-> chrono
+    src_diff_analyzer[src::diff_analyzer]
+    uuid[uuid]
+    src_diff_analyzer -.-> uuid
+    src_diff_analyzer[src::diff_analyzer]
+    crate[crate]
+    src_diff_analyzer -.-> crate
+    src_exporter[src::exporter]
+    crate[crate]
+    src_exporter -.-> crate
+    src_exporter[src::exporter]
+    std[std]
+    src_exporter -.-> std
+    src_exporter[src::exporter]
+    uuid[uuid]
+    src_exporter -.-> uuid
+    src_exporter[src::exporter]
+    serde_json[serde_json]
+    src_exporter -.-> serde_json
+    src_exporter[src::exporter]
+    std[std]
+    src_exporter -.-> std
+    src_exporter[src::exporter]
+    crate[crate]
+    src_exporter -.-> crate
+    src_file_scanner[src::file_scanner]
+    crate[crate]
+    src_file_scanner -.-> crate
+    src_file_scanner[src::file_scanner]
+    std[std]
+    src_file_scanner -.-> std
+    src_file_scanner[src::file_scanner]
+    walkdir[walkdir]
+    src_file_scanner -.-> walkdir
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_integration_tests[src::integration_tests]
+    std[std]
+    src_integration_tests -.-> std
+    src_integration_tests[src::integration_tests]
+    std[std]
+    src_integration_tests -.-> std
+    src_integration_tests[src::integration_tests]
+    std[std]
+    src_integration_tests -.-> std
+    src_integration_tests[src::integration_tests]
+    crate[crate]
+    src_integration_tests -.-> crate
+    src_main[src::main]
+    archlens[archlens]
+    src_main -.-> archlens
+    src_main[src::main]
+    archlens[archlens]
+    src_main -.-> archlens
+    src_main[src::main]
+    std[std]
+    src_main -.-> std
+    src_metadata_extractor[src::metadata_extractor]
+    std[std]
+    src_metadata_extractor -.-> std
+    src_metadata_extractor[src::metadata_extractor]
+    std[std]
+    src_metadata_extractor -.-> std
+    src_metadata_extractor[src::metadata_extractor]
+    crate[crate]
+    src_metadata_extractor -.-> crate
+    src_metadata_extractor[src::metadata_extractor]
+    crate[crate]
+    src_metadata_extractor -.-> crate
+    src_parser_ast[src::parser_ast]
+    std[std]
+    src_parser_ast -.-> std
+    src_parser_ast[src::parser_ast]
+    std[std]
+    src_parser_ast -.-> std
+    src_parser_ast[src::parser_ast]
+    crate[crate]
+    src_parser_ast -.-> crate
+    src_parser_ast[src::parser_ast]
+    regex[regex]
+    src_parser_ast -.-> regex
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    crate[crate]
+    src_test_commands -.-> crate
+    src_test_commands[src::test_commands]
+    std[std]
+    src_test_commands -.-> std
+    src_theme[src/theme]
+    mui_material_styles[@mui/material/styles]
+    src_theme --> mui_material_styles
+    src_types[src::types]
+    std[std]
+    src_types -.-> std
+    src_types[src::types]
+    std[std]
+    src_types -.-> std
+    src_types[src::types]
+    serde[serde]
+    src_types -.-> serde
+    src_types[src::types]
+    chrono[chrono]
+    src_types -.-> chrono
+    src_types[src::types]
+    uuid[uuid]
+    src_types -.-> uuid
+    src_types[src::types]
+    std[std]
+    src_types -.-> std
+    src_validator_optimizer[src::validator_optimizer]
+    crate[crate]
+    src_validator_optimizer -.-> crate
+    src_validator_optimizer[src::validator_optimizer]
+    std[std]
+    src_validator_optimizer -.-> std
+    src_validator_optimizer[src::validator_optimizer]
+    uuid[uuid]
+    src_validator_optimizer -.-> uuid
+    src_validator_optimizer[src::validator_optimizer]
+    crate[crate]
+    src_validator_optimizer -.-> crate
+    src_validator_optimizer[src::validator_optimizer]
+    regex[regex]
+    src_validator_optimizer -.-> regex
+    src_validator_optimizer[src::validator_optimizer]
+    regex[regex]
+    src_validator_optimizer -.-> regex
+    vite_config[vite.config]
+    vite[vite]
+    vite_config --> vite
+    vite_config[vite.config]
+    vitejs_plugin_react[@vitejs/plugin-react]
+    vite_config --> vitejs_plugin_react
+
+    %% Стилизация
+    classDef rustFile fill:#dea584,stroke:#8b4513,stroke-width:2px
+    classDef jsFile fill:#f7df1e,stroke:#323330,stroke-width:2px
+    classDef pyFile fill:#3776ab,stroke:#ffde57,stroke-width:2px
+    classDef configFile fill:#e6f3ff,stroke:#1e88e5,stroke-width:2px

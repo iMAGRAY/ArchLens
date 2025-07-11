@@ -44,6 +44,74 @@ function getArchLensBinary() {
     '  3. Или запустите: node update-binary.js');
 }
 
+// 🚀 Универсальная функция запуска ArchLens команд
+async function runArchlensCommand(args, commandType = 'generic') {
+  return new Promise((resolve, reject) => {
+    const binary = getArchLensBinary();
+    console.error(`[MCP] Запуск команды: ${binary} ${args.join(' ')}`);
+    
+    const child = spawn(binary, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: __dirname
+    });
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', (code) => {
+      console.error(`[MCP] Команда завершена с кодом: ${code}`);
+      
+      if (code === 0) {
+        try {
+          // Пытаемся распарсить JSON
+          const result = JSON.parse(stdout);
+          resolve(result);
+        } catch (e) {
+          // Если не JSON, возвращаем текст
+          resolve({
+            status: "success",
+            message: "Команда выполнена успешно",
+            output: stdout,
+            command_type: commandType
+          });
+        }
+      } else {
+        // Детальная диагностика ошибок
+        let errorMessage = `Команда завершилась с ошибкой (код ${code})`;
+        
+        if (stderr.includes('os error 5') || stderr.includes('Access is denied')) {
+          errorMessage += '\n🔒 Ошибка доступа к файлам - попробуйте:';
+          errorMessage += '\n  • Запустить от имени администратора';
+          errorMessage += '\n  • Проверить права доступа к папке';
+          errorMessage += '\n  • Временно отключить антивирус';
+          errorMessage += '\n  • Убедиться что файлы не используются другими процессами';
+        } else if (stderr.includes('No such file or directory')) {
+          errorMessage += '\n📁 Путь не найден - проверьте правильность пути к проекту';
+        } else if (stderr.includes('Permission denied')) {
+          errorMessage += '\n🚫 Нет прав доступа - запустите с правами администратора';
+        }
+        
+        errorMessage += `\n📋 Детали ошибки: ${stderr}`;
+        
+        reject(new Error(errorMessage));
+      }
+    });
+    
+    child.on('error', (error) => {
+      console.error(`[MCP] Ошибка запуска процесса: ${error.message}`);
+      reject(new Error(`Не удалось запустить ArchLens: ${error.message}`));
+    });
+  });
+}
+
 // 📊 Анализ архитектуры проекта
 async function handleAnalyzeProject(args) {
   const { 
@@ -557,14 +625,174 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   
   try {
-    if (name === "analyze_project") {
-      return await handleAnalyzeProject(args);
+    if (name === 'analyze_project') {
+      const projectPath = args.project_path || '.';
+      const analyzeArgs = ['analyze', projectPath];
+      
+      console.error(`[MCP] Анализ проекта: ${projectPath}`);
+      
+      try {
+        const result = await runArchlensCommand(analyzeArgs, 'analyze');
+        console.error(`[MCP] Анализ завершен успешно`);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error(`[MCP] Ошибка анализа: ${error.message}`);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'error',
+                error: `Анализ завершился с ошибкой: ${error.message}`,
+                project_path: projectPath,
+                troubleshooting: [
+                  'Проверьте права доступа к файлам и папкам',
+                  'Убедитесь что путь существует',
+                  'Временно отключите антивирус',
+                  'Попробуйте запустить от имени администратора'
+                ]
+              }, null, 2)
+            }
+          ]
+        };
+      }
     } else if (name === "export_ai_compact") {
-      return await handleExportAICompact(args);
-    } else if (name === "get_project_structure") {
-      return await handleGetProjectStructure(args);
+      const projectPath = args.project_path || '.';
+      const outputFile = args.output_file;
+      const exportArgs = ['export', projectPath, 'ai_compact'];
+      
+      if (outputFile) {
+        exportArgs.push(outputFile);
+      }
+      
+      console.error(`[MCP] AI Compact экспорт: ${projectPath}`);
+      
+      try {
+        const result = await runArchlensCommand(exportArgs, 'ai_compact');
+        console.error(`[MCP] AI Compact экспорт завершен успешно`);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'success',
+                ai_compact_analysis: result.output || result,
+                project_path: projectPath,
+                output_file: outputFile || 'stdout',
+                token_count: Math.ceil((result.output || JSON.stringify(result)).length / 4),
+                exported_at: new Date().toISOString()
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error(`[MCP] Ошибка AI Compact экспорта: ${error.message}`);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'error',
+                error: `AI Compact экспорт завершился с ошибкой: ${error.message}`,
+                project_path: projectPath
+              }, null, 2)
+            }
+          ]
+        };
+      }
     } else if (name === "generate_diagram") {
-      return await handleGenerateDiagram(args);
+      const projectPath = args.project_path || '.';
+      const diagramType = args.diagram_type || 'mermaid';
+      const outputFile = args.output_file;
+      const diagramArgs = ['diagram', projectPath, diagramType];
+      
+      if (outputFile) {
+        diagramArgs.push(outputFile);
+      }
+      
+      console.error(`[MCP] Генерация диаграммы: ${projectPath} (${diagramType})`);
+      
+      try {
+        const result = await runArchlensCommand(diagramArgs, 'diagram');
+        console.error(`[MCP] Генерация диаграммы завершена успешно`);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'success',
+                diagram_generated: true,
+                project_path: projectPath,
+                diagram_type: diagramType,
+                output_file: outputFile || 'stdout',
+                content: result.output || result,
+                generated_at: new Date().toISOString()
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error(`[MCP] Ошибка генерации диаграммы: ${error.message}`);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'error',
+                error: `Генерация диаграммы завершилась с ошибкой: ${error.message}`,
+                project_path: projectPath
+              }, null, 2)
+            }
+          ]
+        };
+      }
+    } else if (name === "get_project_structure") {
+      const projectPath = args.project_path || '.';
+      const structureArgs = ['structure', projectPath];
+      
+      console.error(`[MCP] Получение структуры проекта: ${projectPath}`);
+      
+      try {
+        const result = await runArchlensCommand(structureArgs, 'structure');
+        console.error(`[MCP] Получение структуры завершено успешно`);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'success',
+                structure: result,
+                project_path: projectPath,
+                retrieved_at: new Date().toISOString()
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error(`[MCP] Ошибка получения структуры: ${error.message}`);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'error',
+                error: `Получение структуры завершилось с ошибкой: ${error.message}`,
+                project_path: projectPath
+              }, null, 2)
+            }
+          ]
+        };
+      }
     } else {
       return {
         content: [{ 

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use std::fmt;
 
 /// Основные типы файлов для анализа
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -45,14 +46,13 @@ pub enum Priority {
 }
 
 /// Статус капсулы
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CapsuleStatus {
+    Pending,
     Active,
     Deprecated,
-    Experimental,
-    Internal,
-    Public,
-    Unstable,
+    Archived,
+    Hidden,
 }
 
 /// Метаданные файла
@@ -71,7 +71,7 @@ pub struct FileMetadata {
     pub imports: Vec<String>,
 }
 
-/// Основная структурная единица - капсула
+/// Основная структура компонента (капсулы)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Capsule {
     pub id: Uuid,
@@ -80,17 +80,21 @@ pub struct Capsule {
     pub file_path: PathBuf,
     pub line_start: usize,
     pub line_end: usize,
+    pub size: usize,
     pub complexity: u32,
-    pub priority: Priority,
-    pub status: CapsuleStatus,
+    pub dependencies: Vec<Uuid>,
     pub layer: Option<String>,
-    pub slogan: Option<String>,
     pub summary: Option<String>,
-    pub warnings: Vec<String>,
-    pub dependencies: Vec<Uuid>,    // ID других капсул
-    pub dependents: Vec<Uuid>,      // ID капсул, которые зависят от этой
+    pub description: Option<String>,
+    pub warnings: Vec<AnalysisWarning>,
+    pub status: CapsuleStatus,
+    pub priority: Priority,
+    pub tags: Vec<String>,
     pub metadata: HashMap<String, String>,
-    pub created_at: DateTime<Utc>,
+    pub quality_score: f64,
+    pub slogan: Option<String>,
+    pub dependents: Vec<Uuid>,
+    pub created_at: Option<String>,
 }
 
 /// Связь между капсулами
@@ -164,8 +168,9 @@ pub struct AnalysisResult {
 /// Предупреждение анализа
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisWarning {
-    pub level: Priority,
     pub message: String,
+    pub level: Priority,
+    pub category: String,
     pub capsule_id: Option<Uuid>,
     pub suggestion: Option<String>,
 }
@@ -173,74 +178,165 @@ pub struct AnalysisWarning {
 /// Форматы экспорта
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportFormat {
-    Yaml,
-    Json,
-    GraphML,
-    DOT,
+    JSON,
+    YAML,
     Mermaid,
+    DOT,
+    GraphML,
     SVG,
+    InteractiveHTML,
     ChainOfThought,
     LLMPrompt,
-    AICompact,  // Сжатый формат для AI моделей (до 100k токенов)
+    AICompact,
 }
 
-/// Настройки анализа
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Конфигурация анализа
+#[derive(Debug, Clone)]
 pub struct AnalysisConfig {
     pub project_path: PathBuf,
     pub include_patterns: Vec<String>,
     pub exclude_patterns: Vec<String>,
-    pub max_depth: Option<u32>,
+    pub max_depth: Option<usize>,
+    pub follow_symlinks: bool,
     pub analyze_dependencies: bool,
     pub extract_comments: bool,
+    pub parse_tests: bool,
+    pub experimental_features: bool,
     pub generate_summaries: bool,
     pub languages: Vec<FileType>,
 }
 
 impl Default for AnalysisConfig {
     fn default() -> Self {
-        Self {
+        AnalysisConfig {
             project_path: PathBuf::from("."),
             include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string()],
             exclude_patterns: vec!["**/target/**".to_string(), "**/node_modules/**".to_string()],
             max_depth: Some(10),
+            follow_symlinks: false,
             analyze_dependencies: true,
             extract_comments: true,
+            parse_tests: false,
+            experimental_features: false,
             generate_summaries: true,
             languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript],
         }
     }
 }
 
-/// Ошибки анализа
-#[derive(Debug, thiserror::Error)]
+/// Типы ошибок анализа
+#[derive(Debug, Clone)]
 pub enum AnalysisError {
-    #[error("IO ошибка: {0}")]
-    Io(#[from] std::io::Error),
-    
-    #[error("Ошибка парсинга: {0}")]
+    IoError(String),
+    ParsingError(String),
+    RegexError(String),
+    GenericError(String),
     Parse(String),
-    
-    #[error("Неподдерживаемый тип файла: {0:?}")]
-    UnsupportedFileType(FileType),
-    
-    #[error("Конфигурация невалидна: {0}")]
-    InvalidConfig(String),
-    
-    #[error("Внутренняя ошибка: {0}")]
-    Internal(String),
+    Io(String),  // Изменяю на String для Clone
 }
 
 impl From<regex::Error> for AnalysisError {
     fn from(err: regex::Error) -> Self {
-        AnalysisError::Parse(err.to_string())
+        AnalysisError::RegexError(err.to_string())
     }
 }
 
 impl From<String> for AnalysisError {
     fn from(err: String) -> Self {
-        AnalysisError::Internal(err)
+        AnalysisError::GenericError(err)
     }
 }
 
-pub type Result<T> = std::result::Result<T, AnalysisError>; 
+impl From<&str> for AnalysisError {
+    fn from(s: &str) -> Self {
+        AnalysisError::GenericError(s.to_string())
+    }
+}
+
+impl fmt::Display for AnalysisError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AnalysisError::IoError(msg) => write!(f, "IO Error: {}", msg),
+            AnalysisError::ParsingError(msg) => write!(f, "Parsing Error: {}", msg),
+            AnalysisError::RegexError(msg) => write!(f, "Regex Error: {}", msg),
+            AnalysisError::GenericError(msg) => write!(f, "Generic Error: {}", msg),
+            AnalysisError::Parse(msg) => write!(f, "Parse Error: {}", msg),
+            AnalysisError::Io(msg) => write!(f, "IO Error: {}", msg),
+        }
+    }
+}
+
+impl From<std::io::Error> for AnalysisError {
+    fn from(err: std::io::Error) -> Self {
+        AnalysisError::IoError(err.to_string())
+    }
+}
+
+/// Наш собственный Result тип для всего проекта
+pub type Result<T> = std::result::Result<T, AnalysisError>;
+
+/// Результат diff-анализа
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffAnalysis {
+    pub changes: Vec<ArchitectureChange>,
+    pub metrics_diff: MetricsDiff,
+    pub quality_trend: QualityTrend,
+    pub recommendations: Vec<String>,
+    pub summary: String,
+}
+
+/// Тип изменения в архитектуре
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureChange {
+    pub change_type: ChangeType,
+    pub component: String,
+    pub description: String,
+    pub impact: ChangeImpact,
+    pub related_components: Vec<String>,
+}
+
+/// Типы изменений
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ChangeType {
+    Added,
+    Removed,
+    Modified,
+    Moved,
+    Renamed,
+    ComplexityIncrease,
+    ComplexityDecrease,
+    NewDependency,
+    RemovedDependency,
+}
+
+/// Влияние изменения
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ChangeImpact {
+    Breaking,
+    Major,
+    Minor,
+    Refactoring,
+    Performance,
+    Quality,
+}
+
+/// Разница метрик
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsDiff {
+    pub complexity_delta: f32,
+    pub coupling_delta: f32,
+    pub cohesion_delta: f32,
+    pub component_count_delta: i32,
+    pub relation_count_delta: i32,
+    pub new_warnings: usize,
+    pub resolved_warnings: usize,
+}
+
+/// Тренд качества
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QualityTrend {
+    Improving,
+    Degrading,
+    Stable,
+    Mixed,
+} 
