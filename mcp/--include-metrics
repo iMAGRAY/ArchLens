@@ -1,0 +1,11 @@
+graph TD
+    %% Архитектурная диаграмма проекта
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px
+    classDef core fill:#ff6b6b,stroke:#d63031,stroke-width:2px
+    classDef service fill:#4ecdc4,stroke:#00b894,stroke-width:2px
+    classDef utility fill:#ffe66d,stroke:#fdcb6e,stroke-width:2px
+    classDef config fill:#a29bfe,stroke:#6c5ce7,stroke-width:2px
+
+
+
+    %% Группировка модулей
