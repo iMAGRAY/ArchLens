@@ -350,7 +350,7 @@ impl CodeSmellDetector {
                 nesting_level = nesting_level.saturating_sub(1);
             }
             
-            if nesting_level > threshold {
+            if nesting_level > threshold as i32 {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::DeepNesting,
                     severity: rule.severity.clone(),

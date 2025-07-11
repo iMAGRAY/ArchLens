@@ -506,118 +506,127 @@ function createManualStructure(projectPath, maxFiles) {
 
 // 📋 Регистрация инструментов MCP
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [{
-    name: "analyze_project",
-    description: "🔍 АНАЛИЗ АРХИТЕКТУРЫ ПРОЕКТА - Полный анализ структуры кода, метрик сложности, зависимостей и архитектурных слоев",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_path: { 
-          type: "string", 
-          description: "Путь к корню проекта для анализа" 
+  tools: [
+    {
+      name: "export_ai_compact",
+      description: "🤖 AI ЭКСПОРТ - Возвращает сжатый анализ архитектуры проекта (~2800 токенов) в удобном для ИИ формате. Включает критические проблемы, архитектурные паттерны, метрики качества, структуру и рекомендации.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_path: {
+            description: "Путь к проекту для анализа",
+            type: "string"
+          },
+          output_file: {
+            description: "Путь для сохранения результата (опционально)",
+            type: "string"
+          },
+          focus_critical_only: {
+            description: "Показывать только критические проблемы",
+            type: "boolean"
+          },
+          include_diff_analysis: {
+            description: "Включить сравнение с предыдущими версиями",
+            type: "boolean"
+          }
         },
-        include_patterns: { 
-          type: "array", 
-          items: { type: "string" },
-          description: "Паттерны файлов для включения (например: ['**/*.rs', '**/*.ts'])" 
+        required: ["project_path"]
+      }
+    },
+    {
+      name: "analyze_project",
+      description: "📊 КРАТКИЙ АНАЛИЗ - Возвращает базовую статистику проекта (файлы, строки, типы) в компактном формате для быстрого понимания масштаба проекта. Идеально для первичной оценки.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_path: {
+            description: "Путь к проекту для анализа",
+            type: "string"
+          },
+          verbose: {
+            description: "Подробный вывод анализа",
+            type: "boolean"
+          },
+          analyze_dependencies: {
+            description: "Анализировать зависимости между модулями",
+            type: "boolean"
+          },
+          extract_comments: {
+            description: "Извлекать комментарии и документацию",
+            type: "boolean"
+          },
+          generate_summaries: {
+            description: "Генерировать краткие описания компонентов",
+            type: "boolean"
+          },
+          include_patterns: {
+            description: "Паттерны файлов для включения (например: ['**/*.rs', '**/*.ts'])",
+            type: "array",
+            items: { type: "string" }
+          },
+          exclude_patterns: {
+            description: "Паттерны файлов для исключения",
+            type: "array",
+            items: { type: "string" }
+          },
+          max_depth: {
+            description: "Максимальная глубина сканирования директорий",
+            type: "integer"
+          }
         },
-        exclude_patterns: { 
-          type: "array", 
-          items: { type: "string" },
-          description: "Паттерны файлов для исключения" 
+        required: ["project_path"]
+      }
+    },
+    {
+      name: "generate_diagram",
+      description: "📈 ГЕНЕРАЦИЯ ДИАГРАММ - Создает архитектурную диаграмму проекта в указанном формате. Для Mermaid диаграмм возвращает готовый код с описанием структуры, компонентов и связей.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_path: {
+            description: "Путь к проекту для анализа",
+            type: "string"
+          },
+          diagram_type: {
+            description: "Тип диаграммы: mermaid (по умолчанию), svg, dot",
+            type: "string",
+            enum: ["mermaid", "svg", "dot"]
+          },
+          include_metrics: {
+            description: "Включить метрики в диаграмму",
+            type: "boolean"
+          },
+          output_file: {
+            description: "Путь для сохранения диаграммы (опционально)",
+            type: "string"
+          }
         },
-        max_depth: { 
-          type: "integer", 
-          description: "Максимальная глубина сканирования директорий" 
+        required: ["project_path"]
+      }
+    },
+    {
+      name: "get_project_structure",
+      description: "📁 СТРУКТУРА ПРОЕКТА - Возвращает иерархическую структуру проекта с типами файлов, базовыми метриками и описанием архитектурных слоев. Оптимизировано для понимания ИИ.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_path: {
+            description: "Путь к проекту",
+            type: "string"
+          },
+          show_metrics: {
+            description: "Включить базовые метрики (размер файлов, количество строк и т.д.)",
+            type: "boolean"
+          },
+          max_files: {
+            description: "Максимальное количество файлов в выводе (по умолчанию 50)",
+            type: "integer"
+          }
         },
-        analyze_dependencies: { 
-          type: "boolean", 
-          description: "Анализировать зависимости между модулями" 
-        },
-        extract_comments: { 
-          type: "boolean", 
-          description: "Извлекать комментарии и документацию" 
-        },
-        generate_summaries: { 
-          type: "boolean", 
-          description: "Генерировать краткие описания компонентов" 
-        }
-      },
-      required: ["project_path"]
+        required: ["project_path"]
+      }
     }
-  }, {
-    name: "export_ai_compact",
-    description: "🤖 AI COMPACT ЭКСПОРТ - Сжатый анализ архитектуры для AI моделей (~2800 токенов): паттерны, аномалии, критические проблемы",
-    inputSchema: {
-      type: "object", 
-      properties: {
-        project_path: { 
-          type: "string", 
-          description: "Путь к проекту для анализа" 
-        },
-        output_file: { 
-          type: "string", 
-          description: "Путь для сохранения результата (опционально)" 
-        },
-        include_diff_analysis: { 
-          type: "boolean", 
-          description: "Включить сравнение с предыдущими версиями" 
-        },
-        focus_critical_only: { 
-          type: "boolean", 
-          description: "Показывать только критические проблемы" 
-        }
-      },
-      required: ["project_path"]
-    }
-  }, {
-    name: "get_project_structure", 
-    description: "📊 СТРУКТУРА ПРОЕКТА - Быстрый обзор файлов, типов, слоев и базовых метрик проекта",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_path: { 
-          type: "string", 
-          description: "Путь к проекту" 
-        },
-        show_metrics: { 
-          type: "boolean", 
-          description: "Включить базовые метрики" 
-        },
-        max_files: { 
-          type: "integer", 
-          description: "Максимальное количество файлов в выводе" 
-        }
-      },
-      required: ["project_path"]
-    }
-  }, {
-    name: "generate_diagram",
-    description: "📈 ГЕНЕРАЦИЯ ДИАГРАММ - Создание архитектурных диаграмм (SVG, Mermaid) с визуализацией компонентов и связей",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_path: { 
-          type: "string", 
-          description: "Путь к проекту" 
-        },
-        diagram_type: { 
-          type: "string", 
-          enum: ["svg", "mermaid", "dot"], 
-          description: "Тип диаграммы" 
-        },
-        output_file: { 
-          type: "string", 
-          description: "Файл для сохранения диаграммы" 
-        },
-        include_metrics: { 
-          type: "boolean", 
-          description: "Включить метрики в диаграмму" 
-        }
-      },
-      required: ["project_path"]
-    }
-  }]
+  ]
 }));
 
 // 🎯 Обработка вызовов инструментов
@@ -629,16 +638,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const projectPath = args.project_path || '.';
       const analyzeArgs = ['analyze', projectPath];
       
+      if (args.verbose) {
+        analyzeArgs.push('--verbose');
+      }
+      
       console.error(`[MCP] Анализ проекта: ${projectPath}`);
       
       try {
         const result = await runArchlensCommand(analyzeArgs, 'analyze');
         console.error(`[MCP] Анализ завершен успешно`);
+        
+        // Парсим JSON результат
+        let analysisData;
+        try {
+          analysisData = typeof result === 'string' ? JSON.parse(result) : result;
+        } catch {
+          analysisData = result;
+        }
+        
+        // Создаем краткий ИИ-дружественный анализ
+        const aiAnalysis = `# 🔍 КРАТКИЙ АНАЛИЗ ПРОЕКТА
+
+**Путь:** ${projectPath}
+**Анализ выполнен:** ${new Date().toLocaleString('ru-RU')}
+
+## 📊 Основные метрики
+- **Всего файлов:** ${analysisData.total_files || 'н/д'}
+- **Строк кода:** ${analysisData.total_lines || 'н/д'}
+- **Дата сканирования:** ${analysisData.scanned_at ? new Date(analysisData.scanned_at).toLocaleString('ru-RU') : 'н/д'}
+
+## 🗂️ Распределение по типам файлов
+${analysisData.file_types ? Object.entries(analysisData.file_types)
+  .sort(([,a], [,b]) => b - a)
+  .slice(0, 10)
+  .map(([ext, count]) => `- **.${ext}**: ${count} файл(ов)`)
+  .join('\n') : 'Данные недоступны'}
+
+## 📈 Архитектурная оценка
+${analysisData.total_files && analysisData.total_files > 100 ? 
+  '⚠️ **КРУПНЫЙ ПРОЕКТ** - рекомендуется модульная архитектура' : 
+  analysisData.total_files > 50 ? 
+    '✅ **СРЕДНИЙ ПРОЕКТ** - хорошо управляемый размер' : 
+    '✅ **МАЛЫЙ ПРОЕКТ** - компактная структура'}
+
+## 🎯 Рекомендации для ИИ
+- Используйте \`export_ai_compact\` для полного анализа архитектуры (~2800 токенов)
+- Используйте \`generate_diagram\` для визуализации структуры  
+- Используйте \`get_project_structure\` для детального изучения файлов
+
+*Это краткая сводка. Для глубокого анализа используйте другие инструменты.*`;
+        
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result, null, 2)
+              text: aiAnalysis
             }
           ]
         };
@@ -648,17 +702,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'error',
-                error: `Анализ завершился с ошибкой: ${error.message}`,
-                project_path: projectPath,
-                troubleshooting: [
-                  'Проверьте права доступа к файлам и папкам',
-                  'Убедитесь что путь существует',
-                  'Временно отключите антивирус',
-                  'Попробуйте запустить от имени администратора'
-                ]
-              }, null, 2)
+              text: `❌ ОШИБКА АНАЛИЗА ПРОЕКТА
+              
+Не удалось выполнить анализ проекта: ${projectPath}
+
+**Причина:** ${error.message}
+
+**Рекомендации по устранению:**
+- Проверьте права доступа к файлам и папкам
+- Убедитесь что путь существует и содержит исходный код
+- Временно отключите антивирус
+- Попробуйте запустить от имени администратора
+- Проверьте что проект не поврежден
+
+**Альтернативы:**
+- Попробуйте \`export_ai_compact\` для альтернативного анализа
+- Используйте \`get_project_structure\` для быстрого обзора
+
+**Путь к проекту:** ${projectPath}
+**Время ошибки:** ${new Date().toLocaleString('ru-RU')}`
             }
           ]
         };
@@ -666,7 +728,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     } else if (name === "export_ai_compact") {
       const projectPath = args.project_path || '.';
       const outputFile = args.output_file;
+      const focusCriticalOnly = args.focus_critical_only || false;
+      const includeDiffAnalysis = args.include_diff_analysis || false;
+      
       const exportArgs = ['export', projectPath, 'ai_compact'];
+      
+      if (focusCriticalOnly) {
+        exportArgs.push('--focus-critical');
+      }
+      
+      if (includeDiffAnalysis) {
+        exportArgs.push('--include-diff');
+      }
       
       if (outputFile) {
         exportArgs.push(outputFile);
@@ -678,18 +751,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await runArchlensCommand(exportArgs, 'ai_compact');
         console.error(`[MCP] AI Compact экспорт завершен успешно`);
         
+        // Возвращаем прямой контент анализа для ИИ
+        const analysisContent = result.output || JSON.stringify(result, null, 2);
+        
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'success',
-                ai_compact_analysis: result.output || result,
-                project_path: projectPath,
-                output_file: outputFile || 'stdout',
-                token_count: Math.ceil((result.output || JSON.stringify(result)).length / 4),
-                exported_at: new Date().toISOString()
-              }, null, 2)
+              text: analysisContent  // Прямой контент без JSON обертки
             }
           ]
         };
@@ -699,11 +768,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'error',
-                error: `AI Compact экспорт завершился с ошибкой: ${error.message}`,
-                project_path: projectPath
-              }, null, 2)
+              text: `❌ ОШИБКА АНАЛИЗА АРХИТЕКТУРЫ
+              
+Не удалось выполнить AI Compact экспорт для проекта: ${projectPath}
+
+**Причина:** ${error.message}
+
+**Рекомендации:**
+- Проверьте корректность пути к проекту
+- Убедитесь что у ArchLens есть права доступа к файлам
+- Проверьте что проект содержит исходный код
+- Попробуйте запустить с правами администратора
+
+**Путь к проекту:** ${projectPath}
+**Время ошибки:** ${new Date().toISOString()}`
             }
           ]
         };
@@ -712,7 +790,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const projectPath = args.project_path || '.';
       const diagramType = args.diagram_type || 'mermaid';
       const outputFile = args.output_file;
+      const includeMetrics = args.include_metrics || false;
+      
       const diagramArgs = ['diagram', projectPath, diagramType];
+      
+      if (includeMetrics) {
+        diagramArgs.push('--include-metrics');
+      }
       
       if (outputFile) {
         diagramArgs.push(outputFile);
@@ -724,19 +808,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await runArchlensCommand(diagramArgs, 'diagram');
         console.error(`[MCP] Генерация диаграммы завершена успешно`);
         
+        // Возвращаем прямой контент диаграммы для ИИ
+        const diagramContent = result.output || result.diagram || JSON.stringify(result, null, 2);
+        
+        // Если это Mermaid диаграмма, добавляем дополнительное форматирование
+        let formattedContent = diagramContent;
+        if (diagramType === 'mermaid') {
+          formattedContent = `# 📊 АРХИТЕКТУРНАЯ ДИАГРАММА
+
+**Проект:** ${projectPath}
+**Тип:** ${diagramType}
+**Создана:** ${new Date().toISOString()}
+
+## Mermaid Диаграмма
+
+\`\`\`mermaid
+${diagramContent}
+\`\`\`
+
+## Описание
+
+Эта диаграмма показывает архитектурную структуру проекта, включая:
+- Основные компоненты и модули
+- Связи между компонентами
+- Зависимости и потоки данных
+- Слои архитектуры
+
+*Сгенерировано ArchLens для AI анализа*`;
+        }
+        
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'success',
-                diagram_generated: true,
-                project_path: projectPath,
-                diagram_type: diagramType,
-                output_file: outputFile || 'stdout',
-                content: result.output || result,
-                generated_at: new Date().toISOString()
-              }, null, 2)
+              text: formattedContent  // Прямой контент диаграммы
             }
           ]
         };
@@ -746,18 +851,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'error',
-                error: `Генерация диаграммы завершилась с ошибкой: ${error.message}`,
-                project_path: projectPath
-              }, null, 2)
+              text: `❌ ОШИБКА ГЕНЕРАЦИИ ДИАГРАММЫ
+              
+Не удалось создать диаграмму для проекта: ${projectPath}
+
+**Тип диаграммы:** ${diagramType}
+**Причина:** ${error.message}
+
+**Рекомендации:**
+- Проверьте что проект содержит исходный код
+- Убедитесь что путь к проекту корректен
+- Попробуйте другой тип диаграммы (mermaid, svg, dot)
+- Проверьте права доступа к файлам
+
+**Путь к проекту:** ${projectPath}
+**Время ошибки:** ${new Date().toISOString()}`
             }
           ]
         };
       }
     } else if (name === "get_project_structure") {
       const projectPath = args.project_path || '.';
+      const showMetrics = args.show_metrics || false;
+      const maxFiles = args.max_files || 50;
+      
       const structureArgs = ['structure', projectPath];
+      
+      if (showMetrics) {
+        structureArgs.push('--show-metrics');
+      }
+      
+      if (maxFiles !== 50) {
+        structureArgs.push('--max-files', maxFiles.toString());
+      }
       
       console.error(`[MCP] Получение структуры проекта: ${projectPath}`);
       
@@ -765,16 +891,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await runArchlensCommand(structureArgs, 'structure');
         console.error(`[MCP] Получение структуры завершено успешно`);
         
+        // Парсим JSON результат
+        let structureData;
+        try {
+          structureData = typeof result === 'string' ? JSON.parse(result) : result;
+        } catch {
+          structureData = result;
+        }
+        
+        // Создаем краткую ИИ-дружественную структуру
+        const structureOverview = `# 📁 ОБЗОР СТРУКТУРЫ ПРОЕКТА
+
+**Путь:** ${projectPath}
+**Анализ выполнен:** ${new Date().toLocaleString('ru-RU')}
+
+## 📊 Общая статистика
+- **Всего файлов:** ${structureData.total_files || 'н/д'}
+- **Показано файлов:** ${Math.min(maxFiles, structureData.total_files || 0)}
+
+## 🗂️ Типы файлов
+${structureData.file_types ? Object.entries(structureData.file_types)
+  .sort(([,a], [,b]) => b - a)
+  .map(([ext, count]) => `- **.${ext}**: ${count} файл(ов)`)
+  .join('\n') : 'Данные недоступны'}
+
+## 🏗️ Архитектурные слои
+${structureData.layers ? structureData.layers.map(layer => `- **${layer}**`).join('\n') : 'Слои не определены'}
+
+## 📄 Ключевые файлы (топ ${Math.min(15, maxFiles)})
+${structureData.files ? structureData.files
+  .slice(0, 15)
+  .map(file => `- \`${file.path}\` (${file.extension}, ${(file.size / 1024).toFixed(1)}KB)`)
+  .join('\n') : 'Файлы недоступны'}
+
+${structureData.files && structureData.files.length > 15 ? `\n... и еще ${structureData.files.length - 15} файл(ов)` : ''}
+
+## 💡 Рекомендации для детального анализа
+- Используйте \`export_ai_compact\` для полного анализа архитектуры
+- Используйте \`generate_diagram\` для визуализации зависимостей
+- Для анализа конкретных файлов используйте стандартные инструменты чтения
+
+*Краткий обзор структуры. Полный анализ доступен через другие инструменты.*`;
+        
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'success',
-                structure: result,
-                project_path: projectPath,
-                retrieved_at: new Date().toISOString()
-              }, null, 2)
+              text: structureOverview
             }
           ]
         };
@@ -784,11 +947,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                status: 'error',
-                error: `Получение структуры завершилось с ошибкой: ${error.message}`,
-                project_path: projectPath
-              }, null, 2)
+              text: `❌ ОШИБКА ПОЛУЧЕНИЯ СТРУКТУРЫ
+              
+Не удалось получить структуру проекта: ${projectPath}
+
+**Причина:** ${error.message}
+
+**Возможные решения:**
+- Проверьте что путь к проекту корректен
+- Убедитесь что у вас есть права доступа к папке
+- Проверьте что папка не пустая
+- Попробуйте указать другой путь
+
+**Альтернативы:**
+- Попробуйте \`analyze_project\` для базовой статистики
+- Используйте \`export_ai_compact\` для альтернативного анализа
+
+**Путь к проекту:** ${projectPath}
+**Время ошибки:** ${new Date().toLocaleString('ru-RU')}`
             }
           ]
         };
