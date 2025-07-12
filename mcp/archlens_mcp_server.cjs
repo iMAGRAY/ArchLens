@@ -13,7 +13,7 @@ const os = require('os');
 // 📋 CONFIGURATION WITHOUT HARDCODING
 const CONFIG = {
   server: {
-    name: "archlens-mcp-server",
+  name: "archlens-mcp-server",
     version: "2.0.0"
   },
   binary: {
@@ -305,7 +305,7 @@ export ARCHLENS_AUTO_ELEVATE=true
 // 🚀 UNIFIED COMMAND EXECUTION (NO SIDE EFFECTS)
 async function executeArchlensCommand(subcommand, projectPath, additionalArgs = [], options = {}) {
   return new Promise((resolve, reject) => {
-    const binary = getArchLensBinary();
+      const binary = getArchLensBinary();
     const args = [subcommand, projectPath, ...additionalArgs];
     
     const spawnOptions = {
@@ -329,9 +329,9 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
     logger.debug(`Project path: ${projectPath}`);
     
     const child = spawn(binary, args, spawnOptions);
-    
-    let stdout = '';
-    let stderr = '';
+      
+      let stdout = '';
+      let stderr = '';
     let isTimedOut = false;
     
     // Setup timeout
@@ -340,16 +340,16 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
       child.kill('SIGTERM');
       logger.error(`Command timed out after ${CONFIG.binary.timeout}ms`);
     }, CONFIG.binary.timeout);
-    
-    child.stdout.on('data', (data) => {
+      
+      child.stdout.on('data', (data) => {
       stdout += data.toString('utf8');
-    });
-    
-    child.stderr.on('data', (data) => {
+      });
+      
+      child.stderr.on('data', (data) => {
       stderr += data.toString('utf8');
-    });
-    
-    child.on('close', (code) => {
+      });
+      
+      child.on('close', (code) => {
       clearTimeout(timeoutId);
       
       logger.debug(`Command finished with code: ${code}`);
@@ -361,7 +361,7 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         return;
       }
       
-      if (code === 0) {
+        if (code === 0) {
         if (stdout.trim().length === 0) {
           resolve({
             status: "success",
@@ -375,13 +375,13 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
             resolve(result);
           } catch (parseError) {
             resolve({
-              status: "success", 
+              status: "success",
               message: "Command executed successfully",
               output: stdout
             });
           }
-        }
-      } else {
+          }
+        } else {
         // Handle Windows Access Denied specifically
         if (os.platform() === 'win32' && (stderr.includes('Access denied') || code === 5)) {
           reject(new Error(`Windows Access Denied (Code ${code})\n` +
@@ -394,10 +394,10 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         } else {
           reject(new Error(stderr || `Command failed with exit code ${code}`));
         }
-      }
-    });
-    
-    child.on('error', (error) => {
+        }
+      });
+      
+      child.on('error', (error) => {
       clearTimeout(timeoutId);
       
       if (error.code === 'ENOENT') {
@@ -415,10 +415,10 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
       } else {
         reject(new Error(`Failed to execute ArchLens: ${error.message} (${error.code})`));
       }
+      });
     });
-  });
 }
-
+    
 // 🎯 UNIFIED RESPONSE CREATION
 function createMCPResponse(toolName, result, error = null, projectPath = null) {
   if (error) {
@@ -439,9 +439,9 @@ Failed to ${getToolAction(toolName)}: ${projectPath || 'unknown path'}
     };
   }
   
-  return {
-    content: [{
-      type: "text", 
+    return {
+      content: [{
+        type: "text",
       text: formatToolResult(toolName, result, projectPath)
     }]
   };
@@ -595,7 +595,7 @@ Failed to create diagram for project: ${projectPath}
       return `✅ **MEDIUM PROJECT** (${totalFiles} files)
     - Manageable size, moderate architectural risks
     - Possible local code quality issues`;
-    } else {
+        } else {
       return `✅ **SMALL PROJECT** (${totalFiles} files)
     - Compact structure, low architectural risks
     - Main issues: code smells, code quality`;
@@ -638,9 +638,9 @@ async function handleAnalyzeProject(args) {
           const elevationAttempted = await tryAutoElevation();
           
           if (elevationAttempted) {
-            return {
-              content: [{
-                type: "text",
+    return {
+      content: [{
+        type: "text",
                 text: `🔐 ADMIN ELEVATION INITIATED
 
 **Status:** Administrator elevation request sent to Windows
@@ -686,17 +686,17 @@ ${createAdminElevationInstructions('analyze', project_path)}
          error.message.includes('os error 5') ||
          error.message.includes('Отказано в доступе'))) {
       
-      return {
-        content: [{
-          type: "text",
+    return {
+      content: [{
+        type: "text",
           text: `❌ WINDOWS ACCESS DENIED
 
 ${createAdminElevationInstructions('analyze', project_path)}
 
 **Original Error:** ${error.message}`
-        }],
-        isError: true
-      };
+      }],
+      isError: true
+    };
     }
     
     return createMCPResponse('analyze_project', null, error, project_path);
@@ -774,15 +774,15 @@ async function handleGenerateDiagram(args) {
         }
         
         const result = {
-          status: "success",
+            status: "success",
           diagram: diagramContent,
-          diagram_type,
-          output_file: output_file || "stdout",
+            diagram_type,
+            output_file: output_file || "stdout",
           size: diagramContent.length
         };
         
         return createMCPResponse('generate_diagram', result, null, resolvedPath);
-      } else {
+        } else {
         throw new Error(`Diagram file not created: ${tempFile}`);
       }
     } catch (execError) {
@@ -814,20 +814,20 @@ function createManualStructure(projectPath) {
         const fullPath = path.join(dir, item);
         
         try {
-          const stat = fs.statSync(fullPath);
-          
-          if (stat.isDirectory()) {
+        const stat = fs.statSync(fullPath);
+        
+        if (stat.isDirectory()) {
             const skipDirs = ['node_modules', '.git', 'target', 'dist', 'build', '.next', '.nuxt'];
             if (!skipDirs.includes(item) && !item.startsWith('.')) {
-              scanDirectory(fullPath, depth + 1);
-            }
-          } else {
-            const ext = path.extname(item).toLowerCase();
-            const relativePath = path.relative(projectPath, fullPath);
-            
-            structure.total_files++;
-            structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
-            
+            scanDirectory(fullPath, depth + 1);
+          }
+        } else {
+          const ext = path.extname(item).toLowerCase();
+          const relativePath = path.relative(projectPath, fullPath);
+          
+          structure.total_files++;
+          structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
+          
             if (structure.files.length < CONFIG.limits.maxFiles) {
               let lineCount = 0;
               try {
@@ -840,16 +840,16 @@ function createManualStructure(projectPath) {
                 lineCount = 0;
               }
               
-              structure.files.push({
-                path: relativePath,
-                name: item,
-                extension: ext,
+            structure.files.push({
+              path: relativePath,
+              name: item,
+              extension: ext,
                 size: stat.size,
                 lines: lineCount
-              });
+            });
               
               structure.total_lines += lineCount;
-            }
+          }
           }
         } catch (statError) {
           logger.debug(`File access error ${fullPath}: ${statError.message}`);
