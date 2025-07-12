@@ -235,8 +235,8 @@ async function checkWindowsAdminRights() {
 async function tryAutoElevation() {
   if (!CONFIG.windows.autoElevate || os.platform() !== 'win32') {
     return false;
-  }
-  
+        }
+        
   try {
     const { spawn } = require('child_process');
     const powershellArgs = [
@@ -300,8 +300,8 @@ export ARCHLENS_AUTO_ELEVATE=true
 **PLATFORM:** ${os.platform()} ${os.release()}
 
 **Alternative:** Use 'get_project_structure' which works without admin rights.`;
-}
-
+    }
+    
 // 🚀 UNIFIED COMMAND EXECUTION (NO SIDE EFFECTS)
 async function executeArchlensCommand(subcommand, projectPath, additionalArgs = [], options = {}) {
   return new Promise((resolve, reject) => {
@@ -668,7 +668,7 @@ ${createAdminElevationInstructions('analyze', project_path)}
             text: createAdminElevationInstructions('analyze', project_path)
           }],
           isError: false
-        };
+    };
       }
       
       logger.debug("Windows admin rights confirmed - proceeding with analysis");
@@ -697,7 +697,7 @@ ${createAdminElevationInstructions('analyze', project_path)}
       }],
       isError: true
     };
-    }
+  }
     
     return createMCPResponse('analyze_project', null, error, project_path);
   }
@@ -784,7 +784,7 @@ async function handleGenerateDiagram(args) {
         return createMCPResponse('generate_diagram', result, null, resolvedPath);
         } else {
         throw new Error(`Diagram file not created: ${tempFile}`);
-      }
+        }
     } catch (execError) {
       throw new Error(`Diagram generation failed: ${execError.message}`);
     }
