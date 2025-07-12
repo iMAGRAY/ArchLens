@@ -112,7 +112,12 @@ impl ArgParser {
         }
         
         Ok(CliCommand::Analyze {
-            project_path: project_path.unwrap_or_else(|| ".".to_string()),
+            project_path: project_path.unwrap_or_else(|| {
+                env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string()
+            }),
             verbose,
             include_tests,
         })
@@ -171,7 +176,12 @@ impl ArgParser {
         }
         
         Ok(CliCommand::Export {
-            project_path: project_path.unwrap_or_else(|| ".".to_string()),
+            project_path: project_path.unwrap_or_else(|| {
+                env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string()
+            }),
             format,
             output,
             options,
@@ -204,7 +214,12 @@ impl ArgParser {
         }
         
         Ok(CliCommand::Structure {
-            project_path: project_path.unwrap_or_else(|| ".".to_string()),
+            project_path: project_path.unwrap_or_else(|| {
+                env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string()
+            }),
             max_depth,
             show_metrics,
         })
@@ -252,7 +267,12 @@ impl ArgParser {
         }
         
         Ok(CliCommand::Diagram {
-            project_path: project_path.unwrap_or_else(|| ".".to_string()),
+            project_path: project_path.unwrap_or_else(|| {
+                env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string()
+            }),
             diagram_type,
             output,
             include_metrics,

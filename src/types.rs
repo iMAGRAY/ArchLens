@@ -209,7 +209,7 @@ pub struct AnalysisConfig {
 impl Default for AnalysisConfig {
     fn default() -> Self {
         AnalysisConfig {
-            project_path: PathBuf::from("."),
+            project_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string()],
             exclude_patterns: vec!["**/target/**".to_string(), "**/node_modules/**".to_string()],
             max_depth: Some(10),

@@ -326,7 +326,7 @@ use std::process::Command;
 #[test]
 fn test_cli_analyze_command() {
     let output = Command::new("./target/release/archlens")
-        .args(&["analyze", "."])
+        .args(&["analyze", &project_path])
         .output()
         .expect("Failed to execute command");
     

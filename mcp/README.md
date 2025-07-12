@@ -149,7 +149,7 @@ Create `.archlens-mcp.json` in your project root:
 Quick project overview with basic statistics and risk assessment.
 
 **Parameters:**
-- `project_path` (string, required): Path to analyze (use "." for current directory)
+- `project_path` (string, required): Path to analyze (use absolute path or relative path)
 - `verbose` (boolean, optional): Include detailed warnings
 - `analyze_dependencies` (boolean, optional): Analyze module dependencies
 - `extract_comments` (boolean, optional): Extract documentation quality metrics
@@ -158,7 +158,7 @@ Quick project overview with basic statistics and risk assessment.
 ```javascript
 // AI Assistant can call:
 analyze_project({
-  "project_path": ".",
+  "project_path": "/path/to/your/project",
   "verbose": true,
   "analyze_dependencies": true
 })
@@ -202,7 +202,7 @@ Comprehensive architecture analysis optimized for AI consumption (~2800 tokens).
 **Example Usage:**
 ```javascript
 export_ai_compact({
-  "project_path": ".",
+  "project_path": "/path/to/your/project",
   "focus_critical_only": false,
   "include_diff_analysis": true
 })
@@ -229,7 +229,7 @@ Hierarchical project structure with structural problem detection.
 **Example Usage:**
 ```javascript
 get_project_structure({
-  "project_path": ".",
+  "project_path": "/path/to/your/project",
   "show_metrics": true,
   "max_files": 500
 })
@@ -256,7 +256,7 @@ Creates architectural diagrams with problem visualization.
 **Example Usage:**
 ```javascript
 generate_diagram({
-  "project_path": ".",
+  "project_path": "/path/to/your/project",
   "diagram_type": "mermaid",
   "include_metrics": true
 })

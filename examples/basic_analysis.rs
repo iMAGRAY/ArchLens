@@ -13,7 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=====================================");
     
     // Define the project path to analyze
-    let project_path = ".";
+    let project_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .to_string_lossy()
+        .to_string();
     
     // Check if ArchLens binary exists
     if !check_archlens_binary() {
@@ -26,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Run basic analysis
     let output = Command::new("./target/release/archlens")
-        .args(&["analyze", project_path])
+        .args(&["analyze", &project_path])
         .output()?;
     
     if output.status.success() {
@@ -42,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Run structure analysis
     let structure_output = Command::new("./target/release/archlens")
-        .args(&["structure", project_path, "--show-metrics"])
+        .args(&["structure", &project_path, "--show-metrics"])
         .output()?;
     
     if structure_output.status.success() {
@@ -58,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Run AI compact export
     let ai_output = Command::new("./target/release/archlens")
-        .args(&["export", project_path, "ai_compact"])
+        .args(&["export", &project_path, "ai_compact"])
         .output()?;
     
     if ai_output.status.success() {
@@ -78,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Generate Mermaid diagram
     let diagram_output = Command::new("./target/release/archlens")
-        .args(&["diagram", project_path, "mermaid", "--include-metrics"])
+        .args(&["diagram", &project_path, "mermaid", "--include-metrics"])
         .output()?;
     
     if diagram_output.status.success() {

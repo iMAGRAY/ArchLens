@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // 🏗️ ARCHLENS MCP SERVER v2.0.0 - CRITICAL FIXES APPLIED
-// NO HARDCODED PATHS | NO SIDE EFFECTS | PROPER "." SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES
+// NO HARDCODED PATHS | NO SIDE EFFECTS | ABSOLUTE PATHS ONLY | UNIFIED LANGUAGE | WINDOWS FIXES
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
@@ -137,7 +137,7 @@ function getArchLensBinary() {
     `  4. Set ARCHLENS_BINARY=custom_name`);
 }
 
-// 🛡️ PROPER PATH RESOLUTION (SUPPORTS ".")
+// 🛡️ ABSOLUTE PATH RESOLUTION (NO RELATIVE PATHS)
 function resolveProjectPath(inputPath) {
   if (!inputPath || typeof inputPath !== 'string') {
     throw new Error('project_path is required and must be a string');
@@ -145,17 +145,14 @@ function resolveProjectPath(inputPath) {
   
   let resolvedPath;
   
-  // Handle special case: "." should resolve to the working directory where MCP was called
-  if (inputPath === ".") {
-    resolvedPath = CONFIG.paths.workingDirectory;
-    logger.debug(`Resolved "." to working directory: ${resolvedPath}`);
-  } else if (path.isAbsolute(inputPath)) {
+  // ALWAYS resolve to absolute path - no relative paths allowed in MCP
+  if (path.isAbsolute(inputPath)) {
     resolvedPath = path.normalize(inputPath);
     logger.debug(`Using absolute path: ${resolvedPath}`);
   } else {
-    // For relative paths, resolve against working directory
+    // Convert ANY relative path (including ".") to absolute
     resolvedPath = path.resolve(CONFIG.paths.workingDirectory, inputPath);
-    logger.debug(`Resolved relative path "${inputPath}" to: ${resolvedPath}`);
+    logger.debug(`Converted relative path "${inputPath}" to absolute: ${resolvedPath}`);
   }
   
   // Validate path exists and is accessible
@@ -306,11 +303,14 @@ export ARCHLENS_AUTO_ELEVATE=true
 **Alternative:** Use 'get_project_structure' which works without admin rights.`;
     }
     
-// 🚀 UNIFIED COMMAND EXECUTION (NO SIDE EFFECTS)
+        // 🚀 UNIFIED COMMAND EXECUTION (ABSOLUTE PATHS ONLY)
 async function executeArchlensCommand(subcommand, projectPath, additionalArgs = [], options = {}) {
   return new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
-    const args = [subcommand, projectPath, ...additionalArgs];
+    
+    // Ensure project path is absolute before passing to binary
+    const absoluteProjectPath = path.isAbsolute(projectPath) ? projectPath : path.resolve(projectPath);
+    const args = [subcommand, absoluteProjectPath, ...additionalArgs];
     
     const spawnOptions = {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -330,7 +330,7 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
     
     logger.debug(`Executing: ${binary} ${args.join(' ')}`);
     logger.debug(`Working directory: ${spawnOptions.cwd}`);
-    logger.debug(`Project path: ${projectPath}`);
+    logger.debug(`Absolute project path: ${absoluteProjectPath}`);
     
     const child = spawn(binary, args, spawnOptions);
       
@@ -771,7 +771,7 @@ async function handleGenerateDiagram(args) {
     }
     
     const resolvedPath = resolveProjectPath(project_path);
-    const tempFile = output_file || `temp_diagram_${Date.now()}.${diagram_type === 'mermaid' ? 'mmd' : diagram_type}`;
+    const tempFile = output_file || path.resolve(CONFIG.paths.workingDirectory, `temp_diagram_${Date.now()}.${diagram_type === 'mermaid' ? 'mmd' : diagram_type}`);
     
     try {
       await executeArchlensCommand('diagram', resolvedPath, [diagram_type, tempFile]);
@@ -835,7 +835,7 @@ function createManualStructure(projectPath) {
           }
         } else {
           const ext = path.extname(item).toLowerCase();
-          const relativePath = path.relative(projectPath, fullPath);
+          const relativePath = path.relative(path.resolve(projectPath), fullPath);
           
           structure.total_files++;
           structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
