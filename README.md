@@ -20,22 +20,22 @@
 
 ## English
 
-### 🎯 What is ArchLens?
+### ▶ What is ArchLens?
 
 ArchLens is a powerful Rust-based code architecture analyzer that provides comprehensive insights into your codebase structure, quality metrics, and architectural patterns. It comes with an integrated MCP (Model Context Protocol) server for seamless AI editor integration.
 
-### ⭐ Key Features
+### ★ Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **🔍 Architecture Analysis** | Deep analysis of code structure, dependencies, and patterns |
-| **📊 Quality Metrics** | Cyclomatic complexity, technical debt, code smells detection |
-| **🧠 AI-Powered Export** | ~2800 token AI-ready analysis for LLM consumption |
-| **📈 Visual Diagrams** | Mermaid-based architecture diagrams with problem highlighting |
-| **🔧 MCP Integration** | Native support for Cursor, VSCode, Claude, and other AI editors |
+| **▣ Architecture Analysis** | Deep analysis of code structure, dependencies, and patterns |
+| **▦ Quality Metrics** | Cyclomatic complexity, technical debt, code smells detection |
+| **◉ AI-Powered Export** | ~2800 token AI-ready analysis for LLM consumption |
+| **◈ Visual Diagrams** | Mermaid-based architecture diagrams with problem highlighting |
+| **⚙ MCP Integration** | Native support for Cursor, VSCode, Claude, and other AI editors |
 | **⚡ Performance** | Fast Rust-based analysis with parallel processing |
 
-### 🚀 Quick Start
+### ▲ Quick Start
 
 #### Prerequisites
 - Rust 1.70+ 
@@ -68,7 +68,7 @@ npm install
 ./target/release/archlens diagram /path/to/project mermaid
 ```
 
-### 🛠️ MCP Server Integration
+### ⚙ MCP Server Integration
 
 ArchLens includes a powerful MCP server for AI editor integration:
 
@@ -97,7 +97,7 @@ Add to `.cursor/mcp_settings.json`:
 }
 ```
 
-### 🏗️ Architecture
+### ◆ Architecture
 
 ```
 archlens/
@@ -111,13 +111,13 @@ archlens/
 └── target/release/        # Compiled binaries
 ```
 
-### 📋 Supported Languages
+### ◉ Supported Languages
 
 ✅ **Fully Supported:** Rust, TypeScript, JavaScript, Python, Java, C#  
-🔄 **Partial Support:** C++, Go, PHP, Ruby  
-📝 **Planned:** Swift, Kotlin, Dart
+◐ **Partial Support:** C++, Go, PHP, Ruby  
+◯ **Planned:** Swift, Kotlin, Dart
 
-### 🤝 Contributing
+### ◈ Contributing
 
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/amazing-feature`)
@@ -125,7 +125,7 @@ archlens/
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open Pull Request
 
-### 📄 License
+### ◐ License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
@@ -133,22 +133,22 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Русский
 
-### 🎯 Что такое ArchLens?
+### ▶ Что такое ArchLens?
 
 ArchLens — это мощный анализатор архитектуры кода на Rust, который предоставляет комплексную информацию о структуре кодовой базы, метриках качества и архитектурных паттернах. Включает интегрированный MCP-сервер для бесшовной работы с AI-редакторами.
 
-### ⭐ Ключевые возможности
+### ★ Ключевые возможности
 
 | Функция | Описание |
 |---------|----------|
-| **🔍 Анализ архитектуры** | Глубокий анализ структуры кода, зависимостей и паттернов |
-| **📊 Метрики качества** | Цикломатическая сложность, технический долг, обнаружение запахов кода |
-| **🧠 AI-экспорт** | ~2800 токенов анализа для ИИ-потребления |
-| **📈 Визуальные диаграммы** | Mermaid-диаграммы архитектуры с выделением проблем |
-| **🔧 MCP-интеграция** | Нативная поддержка Cursor, VSCode, Claude и других AI-редакторов |
+| **▣ Анализ архитектуры** | Глубокий анализ структуры кода, зависимостей и паттернов |
+| **▦ Метрики качества** | Цикломатическая сложность, технический долг, обнаружение запахов кода |
+| **◉ AI-экспорт** | ~2800 токенов анализа для ИИ-потребления |
+| **◈ Визуальные диаграммы** | Mermaid-диаграммы архитектуры с выделением проблем |
+| **⚙ MCP-интеграция** | Нативная поддержка Cursor, VSCode, Claude и других AI-редакторов |
 | **⚡ Производительность** | Быстрый анализ на Rust с параллельной обработкой |
 
-### 🚀 Быстрый старт
+### ▲ Быстрый старт
 
 #### Требования
 - Rust 1.70+
@@ -181,7 +181,7 @@ npm install
 ./target/release/archlens diagram /path/to/project mermaid
 ```
 
-### 🛠️ Интеграция с MCP-сервером
+### ⚙ Интеграция с MCP-сервером
 
 ArchLens включает мощный MCP-сервер для интеграции с AI-редакторами:
 
@@ -210,7 +210,7 @@ ArchLens включает мощный MCP-сервер для интеграц�
 }
 ```
 
-### 🏗️ Архитектура
+### ◆ Архитектура
 
 ```
 archlens/
@@ -224,13 +224,13 @@ archlens/
 └── target/release/        # Скомпилированные бинарники
 ```
 
-### 📋 Поддерживаемые языки
+### ◉ Поддерживаемые языки
 
 ✅ **Полная поддержка:** Rust, TypeScript, JavaScript, Python, Java, C#  
-🔄 **Частичная поддержка:** C++, Go, PHP, Ruby  
-📝 **Планируется:** Swift, Kotlin, Dart
+◐ **Частичная поддержка:** C++, Go, PHP, Ruby  
+◯ **Планируется:** Swift, Kotlin, Dart
 
-### 🤝 Участие в разработке
+### ◈ Участие в разработке
 
 1. Сделать форк репозитория
 2. Создать ветку функции (`git checkout -b feature/amazing-feature`)
@@ -238,7 +238,7 @@ archlens/
 4. Отправить в ветку (`git push origin feature/amazing-feature`)
 5. Открыть Pull Request
 
-### 📄 Лицензия
+### ◐ Лицензия
 
 Этот проект лицензирован под лицензией MIT - подробности в файле [LICENSE](LICENSE).
 
@@ -246,10 +246,10 @@ archlens/
 
 <div align="center">
 
-**Made with ❤️ by the ArchLens Team**
+**Made with ♥ by the ArchLens Team**
 
-[🌟 Star us on GitHub](https://github.com/yourusername/archlens) • 
-[📝 Report Issues](https://github.com/yourusername/archlens/issues) • 
-[💬 Discussions](https://github.com/yourusername/archlens/discussions)
+[★ Star us on GitHub](https://github.com/yourusername/archlens) • 
+[◉ Report Issues](https://github.com/yourusername/archlens/issues) • 
+[◈ Discussions](https://github.com/yourusername/archlens/discussions)
 
 </div> 
