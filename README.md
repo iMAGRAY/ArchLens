@@ -47,7 +47,7 @@
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/1f680.svg" width="20" height="20" alt="Rocket"/> Quick Start
+## 🚀 Quick Start
 
 ### 📦 Installation
 
@@ -103,7 +103,7 @@ cargo build --release
 ```
 
 #### 📈 Architecture Diagram
-```bash
+   ```bash
 # Generate Mermaid diagram
 ./archlens diagram . mermaid
 
@@ -122,19 +122,19 @@ ArchLens includes a powerful MCP server for seamless AI assistant integration:
 #### 🛠️ Setup with Claude Desktop
 
 1. **Configure MCP Settings** (`~/.config/claude-desktop/mcp_settings.json`):
-```json
-{
+   ```json
+   {
   "mcpServers": {
-    "archlens": {
-      "command": "node",
+       "archlens": {
+         "command": "node",
       "args": ["/path/to/archlens/mcp/archlens_mcp_server.cjs"],
       "env": {
         "ARCHLENS_DEBUG": "false"
       }
-    }
-  }
-}
-```
+       }
+     }
+   }
+   ```
 
 2. **Restart Claude Desktop**
 
@@ -255,7 +255,7 @@ graph TD
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg" width="20" height="20" alt="Architecture"/> Architecture
+## 🏗️ Architecture
 
 ### 🔧 Core Components
 
@@ -328,7 +328,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/1f3af.svg" width="20" height="20" alt="Target"/> Use Cases
+## 🎯 Use Cases
 
 ### 🔍 **Code Review Automation**
 - Pre-commit architecture validation
@@ -352,7 +352,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/1f30d.svg" width="20" height="20" alt="Globe"/> Language Support
+## 🌍 Language Support
 
 | Language | Parsing | Metrics | Dependencies |
 |----------|---------|---------|--------------|
@@ -389,7 +389,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/2699.svg" width="20" height="20" alt="Gear"/> Configuration
+## ⚙️ Configuration
 
 ### 🔧 Environment Variables
 
@@ -451,13 +451,13 @@ focus_critical = false
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/1f4c4.svg" width="20" height="20" alt="Page Facing Up"/> License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## <img src="https://cdn.jsdelivr.net/gh/twemoji/twemoji/assets/svg/1f91d.svg" width="20" height="20" alt="Handshake"/> Contributing
+## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 

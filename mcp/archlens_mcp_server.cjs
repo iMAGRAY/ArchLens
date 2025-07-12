@@ -653,9 +653,9 @@ async function handleAnalyzeProject(args) {
       
       logger.debug("Genuine permission error detected - suggesting admin elevation");
       
-      return {
-        content: [{
-          type: "text",
+    return {
+      content: [{
+        type: "text",
           text: `⚠️ PERMISSION ERROR DETECTED
 
 **The binary encountered a genuine permission issue.**
