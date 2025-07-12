@@ -33,7 +33,7 @@ ArchLens is a powerful Rust-based code architecture analyzer that provides compr
 | **◉ AI-Powered Export** | ~2800 token AI-ready analysis for LLM consumption |
 | **◈ Visual Diagrams** | Mermaid-based architecture diagrams with problem highlighting |
 | **⚙ MCP Integration** | Native support for Cursor, VSCode, Claude, and other AI editors |
-| **⚡ Performance** | Fast Rust-based analysis with parallel processing |
+| **◎ Performance** | Fast Rust-based analysis with parallel processing |
 
 ### ▲ Quick Start
 
@@ -113,7 +113,7 @@ archlens/
 
 ### ◉ Supported Languages
 
-✅ **Fully Supported:** Rust, TypeScript, JavaScript, Python, Java, C#  
+▣ **Fully Supported:** Rust, TypeScript, JavaScript, Python, Java, C#  
 ◐ **Partial Support:** C++, Go, PHP, Ruby  
 ◯ **Planned:** Swift, Kotlin, Dart
 
@@ -146,7 +146,7 @@ ArchLens — это мощный анализатор архитектуры к�
 | **◉ AI-экспорт** | ~2800 токенов анализа для ИИ-потребления |
 | **◈ Визуальные диаграммы** | Mermaid-диаграммы архитектуры с выделением проблем |
 | **⚙ MCP-интеграция** | Нативная поддержка Cursor, VSCode, Claude и других AI-редакторов |
-| **⚡ Производительность** | Быстрый анализ на Rust с параллельной обработкой |
+| **◎ Производительность** | Быстрый анализ на Rust с параллельной обработкой |
 
 ### ▲ Быстрый старт
 
@@ -226,7 +226,7 @@ archlens/
 
 ### ◉ Поддерживаемые языки
 
-✅ **Полная поддержка:** Rust, TypeScript, JavaScript, Python, Java, C#  
+▣ **Полная поддержка:** Rust, TypeScript, JavaScript, Python, Java, C#  
 ◐ **Частичная поддержка:** C++, Go, PHP, Ruby  
 ◯ **Планируется:** Swift, Kotlin, Dart
 
