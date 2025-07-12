@@ -18,7 +18,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
             print_help();
         },
         CliCommand::Analyze { project_path } => {
-            println!("🔍 Анализ проекта: {}", project_path);
+            eprintln!("🔍 Анализ проекта: {}", project_path);
             
             if !Path::new(&project_path).exists() {
                 eprintln!("❌ Путь не существует: {}", project_path);
@@ -27,7 +27,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
             
             match stats::get_project_stats(&project_path) {
                 Ok(stats) => {
-                    println!("✅ Анализ завершен успешно");
+                    eprintln!("✅ Анализ завершен успешно");
                     println!("{}", serde_json::to_string_pretty(&stats)?);
                 },
                 Err(err) => {
@@ -37,7 +37,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
             }
         },
         CliCommand::Export { project_path, format, output } => {
-            println!("📤 Экспорт проекта: {} в формат: {}", project_path, format);
+            eprintln!("📤 Экспорт проекта: {} в формат: {}", project_path, format);
             
             match format.as_str() {
                 "ai_compact" => {
@@ -45,7 +45,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
                         Ok(content) => {
                             if let Some(output_file) = output {
                                 std::fs::write(&output_file, &content)?;
-                                println!("✅ AI Compact анализ сохранен в: {}", output_file);
+                                eprintln!("✅ AI Compact анализ сохранен в: {}", output_file);
                             } else {
                                 println!("{}", content);
                             }
@@ -64,7 +64,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
             }
         },
         CliCommand::Structure { project_path } => {
-            println!("📊 Структура проекта: {}", project_path);
+            eprintln!("📊 Структура проекта: {}", project_path);
             
             match stats::get_project_structure(&project_path) {
                 Ok(structure) => {
@@ -77,7 +77,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
             }
         },
         CliCommand::Diagram { project_path, diagram_type, output } => {
-            println!("📈 Генерация диаграммы: {} типа: {}", project_path, diagram_type);
+            eprintln!("📈 Генерация диаграммы: {} типа: {}", project_path, diagram_type);
             
             match diagram_type.as_str() {
                 "mermaid" => {
@@ -85,7 +85,7 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
                         Ok(content) => {
                             let output_path = output.unwrap_or_else(|| "diagram.mmd".to_string());
                             std::fs::write(&output_path, content)?;
-                            println!("✅ Mermaid диаграмма сохранена в: {}", output_path);
+                            eprintln!("✅ Mermaid диаграмма сохранена в: {}", output_path);
                         },
                         Err(err) => {
                             eprintln!("❌ Ошибка генерации диаграммы: {}", err);

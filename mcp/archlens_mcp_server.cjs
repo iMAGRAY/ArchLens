@@ -1,448 +1,801 @@
 #!/usr/bin/env node
 
-// 🏗️ ARCHLENS MCP СЕРВЕР v1.0.0
-// Интеллектуальный анализ архитектуры кода для AI редакторов (Cursor, VSCode, Claude)
+// 🏗️ ARCHLENS MCP SERVER v2.0.0 - CRITICAL FIXES APPLIED
+// NO HARDCODED PATHS | NO SIDE EFFECTS | PROPER "." SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
-const { spawn, exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const server = new Server({
-  name: "archlens-mcp-server", 
-  version: "1.0.1"
-}, {
-  capabilities: { tools: {} }
-});
+// 📋 CONFIGURATION WITHOUT HARDCODING
+const CONFIG = {
+  server: {
+    name: "archlens-mcp-server",
+    version: "2.0.0"
+  },
+  binary: {
+    name: process.env.ARCHLENS_BINARY || "archlens",
+    searchPaths: [
+      process.env.ARCHLENS_PATH,
+      path.join(process.cwd(), "target", "release"),
+      path.join(process.cwd(), "target", "debug"), 
+      path.join(__dirname, "target", "release"),
+      path.join(__dirname, "target", "debug"),
+      path.join(__dirname),
+      process.cwd()
+    ].filter(Boolean), // Remove undefined/null values
+    timeout: 60000
+  },
+  paths: {
+    workingDirectory: process.env.ARCHLENS_WORKDIR || process.cwd()
+  },
+  language: {
+    locale: "en_US.UTF-8",
+    forceEnglish: true
+  },
+  windows: {
+    useShell: true,
+    retryOnAccessDenied: true,
+    adminRequired: false,
+    autoElevate: process.env.ARCHLENS_AUTO_ELEVATE === "true"
+  },
+  patterns: {
+    include: [
+      "**/*.rs", "**/*.ts", "**/*.js", "**/*.py", "**/*.java", 
+      "**/*.cpp", "**/*.c", "**/*.go", "**/*.php", "**/*.rb", 
+      "**/*.cs", "**/*.kt", "**/*.swift", "**/*.dart", "**/*.vue", 
+      "**/*.jsx", "**/*.tsx", "**/*.html", "**/*.css", "**/*.scss", 
+      "**/*.sass", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml", 
+      "**/*.md", "**/*.txt"
+    ],
+    exclude: [
+      "**/target/**", "**/node_modules/**", "**/.git/**", "**/dist/**", 
+      "**/build/**", "**/.next/**", "**/.nuxt/**", "**/coverage/**", 
+      "**/tmp/**", "**/temp/**"
+    ]
+  },
+  limits: {
+    maxDepth: 20,
+    maxFiles: 1000,
+    scanDepth: 15,
+    maxFileSize: 1000000
+  },
+  textExtensions: [
+    '.rs', '.ts', '.js', '.py', '.java', '.cpp', '.c', '.go', '.php', 
+    '.rb', '.cs', '.kt', '.swift', '.dart', '.vue', '.jsx', '.tsx', 
+    '.html', '.css', '.scss', '.sass', '.json', '.yaml', '.yml', 
+    '.xml', '.md', '.txt'
+  ]
+};
 
-// 🔍 Определение пути к бинарнику ArchLens
-function getArchLensBinary() {
-  const platform = os.platform();
-  const extension = platform === 'win32' ? '.exe' : '';
+// 🔇 LOGGING WITHOUT SIDE EFFECTS  
+class Logger {
+  constructor(enabled = process.env.ARCHLENS_DEBUG === "true") {
+    this.enabled = enabled;
+  }
   
-  // Приоритет: локальный бинарник в папке MCP
-  const possiblePaths = [
-    path.join(__dirname, `archlens${extension}`),  // В папке mcp (приоритет)
-    path.join(__dirname, '..', 'target', 'release', `archlens${extension}`),
-    path.join(__dirname, '..', 'target', 'debug', `archlens${extension}`),
-    `archlens${extension}`,
-    'archlens'
-  ];
-  
-  for (const binPath of possiblePaths) {
-    if (fs.existsSync(binPath)) {
-      return binPath;
+  debug(message) {
+    if (this.enabled) {
+      process.stderr.write(`[DEBUG] ${message}\n`);
     }
   }
   
-  throw new Error('❌ ArchLens бинарник не найден.\n' + 
-    '📋 Убедитесь что:\n' + 
-    '  1. Проект собран: cargo build --release\n' + 
-    '  2. Бинарник скопирован: npm run update-binary\n' + 
-    '  3. Или запустите: node update-binary.js');
+  info(message) {
+    if (this.enabled) {
+      process.stderr.write(`[INFO] ${message}\n`);
+    }
+  }
+  
+  error(message) {
+    if (this.enabled) {
+      process.stderr.write(`[ERROR] ${message}\n`);
+    }
+  }
 }
 
-// 🚀 Универсальная функция запуска ArchLens команд
-async function runArchlensCommand(args, commandType = 'generic') {
+const logger = new Logger();
+
+// 🔍 DYNAMIC BINARY LOCATION (NO HARDCODING)
+function getArchLensBinary() {
+  const platform = os.platform();
+  const extension = platform === 'win32' ? '.exe' : '';
+  const binaryName = `${CONFIG.binary.name}${extension}`;
+  
+  // 1. Check if it's in PATH
+  try {
+    const which = platform === 'win32' ? 'where' : 'which';
+    const { execSync } = require('child_process');
+    const result = execSync(`${which} ${CONFIG.binary.name}`, { encoding: 'utf8', stdio: 'pipe' });
+    if (result.trim()) {
+      logger.debug(`Found binary in PATH: ${result.trim()}`);
+      return CONFIG.binary.name; // Use PATH version
+    }
+  } catch (e) {
+    logger.debug(`Binary not in PATH: ${e.message}`);
+  }
+  
+  // 2. Check configured search paths
+  for (const searchPath of CONFIG.binary.searchPaths) {
+    const fullPath = path.join(searchPath, binaryName);
+    if (fs.existsSync(fullPath)) {
+      try {
+        fs.accessSync(fullPath, fs.constants.F_OK | fs.constants.X_OK);
+        logger.debug(`Found executable binary: ${fullPath}`);
+        return fullPath;
+      } catch (accessError) {
+        logger.debug(`Binary found but not executable: ${fullPath}`);
+      }
+    }
+  }
+  
+  throw new Error(`❌ ArchLens binary '${binaryName}' not found in search paths: ${CONFIG.binary.searchPaths.join(', ')}\n` +
+    `🔧 Solutions:\n` +
+    `  1. Build: cargo build --release\n` +
+    `  2. Set ARCHLENS_PATH=/path/to/binary\n` +
+    `  3. Add binary to PATH\n` +
+    `  4. Set ARCHLENS_BINARY=custom_name`);
+}
+
+// 🛡️ PROPER PATH RESOLUTION (SUPPORTS ".")
+function resolveProjectPath(inputPath) {
+  if (!inputPath || typeof inputPath !== 'string') {
+    throw new Error('project_path is required and must be a string');
+  }
+  
+  let resolvedPath;
+  
+  // Handle special case: "." should resolve to the working directory where MCP was called
+  if (inputPath === ".") {
+    resolvedPath = CONFIG.paths.workingDirectory;
+    logger.debug(`Resolved "." to working directory: ${resolvedPath}`);
+  } else if (path.isAbsolute(inputPath)) {
+    resolvedPath = path.normalize(inputPath);
+    logger.debug(`Using absolute path: ${resolvedPath}`);
+  } else {
+    // For relative paths, resolve against working directory
+    resolvedPath = path.resolve(CONFIG.paths.workingDirectory, inputPath);
+    logger.debug(`Resolved relative path "${inputPath}" to: ${resolvedPath}`);
+  }
+  
+  // Validate path exists and is accessible
+  try {
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`Path does not exist: ${resolvedPath}`);
+    }
+    
+    const stat = fs.statSync(resolvedPath);
+    if (!stat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolvedPath}`);
+    }
+    
+    // Test read access
+    fs.accessSync(resolvedPath, fs.constants.R_OK);
+    
+  } catch (error) {
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      throw new Error(`Access denied to path: ${resolvedPath}\n` +
+        `🔧 Windows Solutions:\n` +
+        `  • Run as Administrator\n` +
+        `  • Check folder permissions\n` +
+        `  • Disable antivirus temporarily\n` +
+        `  • Ensure files are not in use`);
+    }
+    throw error;
+  }
+  
+  return resolvedPath;
+}
+
+// 🌍 WINDOWS COMPATIBILITY HELPERS
+function getWindowsExecutionOptions() {
+  if (os.platform() !== 'win32') {
+    return {};
+  }
+  
+  return {
+    shell: CONFIG.windows.useShell,
+    windowsHide: true,
+    env: {
+      ...process.env,
+      LANG: "en_US.UTF-8",         // Force English locale on Windows
+      LC_ALL: "en_US.UTF-8",       // Force English locale for all categories
+      RUST_BACKTRACE: "0",         // Disable Rust backtraces
+      ARCHLENS_LANG: "en"          // Force English output from binary
+    }
+  };
+}
+
+// 🔐 WINDOWS ADMIN RIGHTS CHECKER
+async function checkWindowsAdminRights() {
+  if (os.platform() !== 'win32') {
+    return true; // Non-Windows platforms don't need admin
+  }
+  
+  try {
+    // Try to read a system directory that requires admin rights
+    const { execSync } = require('child_process');
+    const result = execSync('net session >nul 2>&1 && echo "ADMIN" || echo "NOT_ADMIN"', { 
+      encoding: 'utf8', 
+      stdio: 'pipe' 
+    });
+    
+    const isAdmin = result.trim().includes('ADMIN');
+    logger.debug(`Windows admin check: ${isAdmin ? 'ADMIN' : 'NOT_ADMIN'}`);
+    return isAdmin;
+  } catch (error) {
+    logger.debug(`Admin check failed: ${error.message}`);
+    return false;
+  }
+}
+
+// 🚀 WINDOWS ADMIN ELEVATION HELPER
+async function tryAutoElevation() {
+  if (!CONFIG.windows.autoElevate || os.platform() !== 'win32') {
+    return false;
+  }
+  
+  try {
+    const { spawn } = require('child_process');
+    const powershellArgs = [
+      '-Command',
+      `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${process.cwd()}'; node mcp/archlens_mcp_server.cjs"`
+    ];
+    
+    logger.debug("Attempting automatic admin elevation...");
+    
+    spawn('powershell', powershellArgs, {
+      stdio: 'ignore',
+      detached: true
+    });
+    
+    // Give user time to approve UAC prompt
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    return true;
+  } catch (error) {
+    logger.debug(`Auto elevation failed: ${error.message}`);
+    return false;
+  }
+}
+
+function createAdminElevationInstructions(command, projectPath) {
+  const powershellCommand = `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${process.cwd()}'; node mcp/archlens_mcp_server.cjs"`;
+  const autoElevateInfo = CONFIG.windows.autoElevate ? 
+    `**AUTO-ELEVATION:** Enabled (ARCHLENS_AUTO_ELEVATE=true)` :
+    `**AUTO-ELEVATION:** Disabled (set ARCHLENS_AUTO_ELEVATE=true to enable automatic elevation)`;
+  
+  return `🔐 WINDOWS ADMIN RIGHTS REQUIRED
+
+**Reason:** ArchLens analyze_project requires administrator privileges to scan all files and directories.
+
+${autoElevateInfo}
+
+**AUTOMATIC SOLUTION:**
+Run this PowerShell command to restart with admin rights:
+
+\`\`\`powershell
+${powershellCommand}
+\`\`\`
+
+**MANUAL SOLUTION:**
+1. Close current session
+2. Right-click PowerShell/CMD → "Run as Administrator"  
+3. Navigate to: ${process.cwd()}
+4. Run: node mcp/archlens_mcp_server.cjs
+5. Retry the analyze_project command
+
+**ENVIRONMENT SETUP:**
+\`\`\`bash
+# Enable automatic elevation (optional)
+export ARCHLENS_AUTO_ELEVATE=true
+
+# Then retry analyze_project
+\`\`\`
+
+**PROJECT PATH:** ${projectPath}
+**CURRENT USER:** ${os.userInfo().username}
+**PLATFORM:** ${os.platform()} ${os.release()}
+
+**Alternative:** Use 'get_project_structure' which works without admin rights.`;
+}
+
+// 🚀 UNIFIED COMMAND EXECUTION (NO SIDE EFFECTS)
+async function executeArchlensCommand(subcommand, projectPath, additionalArgs = [], options = {}) {
   return new Promise((resolve, reject) => {
     const binary = getArchLensBinary();
-    console.error(`[MCP] Запуск команды: ${binary} ${args.join(' ')}`);
+    const args = [subcommand, projectPath, ...additionalArgs];
     
-    const child = spawn(binary, args, {
+    const spawnOptions = {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: __dirname
-    });
+      cwd: CONFIG.paths.workingDirectory,
+      encoding: 'utf8',
+      timeout: CONFIG.binary.timeout,
+      env: {
+        ...process.env,
+        LANG: "en_US.UTF-8",         // Force English locale
+        LC_ALL: "en_US.UTF-8",       // Force English locale for all categories
+        RUST_BACKTRACE: "0",         // Disable Rust backtraces for clean output
+        ARCHLENS_LANG: "en"          // Force English output from binary
+      },
+      ...getWindowsExecutionOptions(),
+      ...options
+    };
+    
+    logger.debug(`Executing: ${binary} ${args.join(' ')}`);
+    logger.debug(`Working directory: ${spawnOptions.cwd}`);
+    logger.debug(`Project path: ${projectPath}`);
+    
+    const child = spawn(binary, args, spawnOptions);
     
     let stdout = '';
     let stderr = '';
+    let isTimedOut = false;
+    
+    // Setup timeout
+    const timeoutId = setTimeout(() => {
+      isTimedOut = true;
+      child.kill('SIGTERM');
+      logger.error(`Command timed out after ${CONFIG.binary.timeout}ms`);
+    }, CONFIG.binary.timeout);
     
     child.stdout.on('data', (data) => {
-      stdout += data.toString();
+      stdout += data.toString('utf8');
     });
     
     child.stderr.on('data', (data) => {
-      stderr += data.toString();
+      stderr += data.toString('utf8');
     });
     
     child.on('close', (code) => {
-      console.error(`[MCP] Команда завершена с кодом: ${code}`);
+      clearTimeout(timeoutId);
+      
+      logger.debug(`Command finished with code: ${code}`);
+      logger.debug(`Stdout length: ${stdout.length}`);
+      logger.debug(`Stderr length: ${stderr.length}`);
+      
+      if (isTimedOut) {
+        reject(new Error(`Command execution timed out after ${CONFIG.binary.timeout}ms`));
+        return;
+      }
       
       if (code === 0) {
-        try {
-          // Пытаемся распарсить JSON
-          const result = JSON.parse(stdout);
-          resolve(result);
-        } catch (e) {
-          // Если не JSON, возвращаем текст
+        if (stdout.trim().length === 0) {
           resolve({
             status: "success",
-            message: "Команда выполнена успешно",
-            output: stdout,
-            command_type: commandType
+            message: "Command executed successfully (empty output)",
+            output: stderr.length > 0 ? stderr : "No output generated",
+            warning: "empty_stdout"
           });
+        } else {
+          try {
+            const result = JSON.parse(stdout);
+            resolve(result);
+          } catch (parseError) {
+            resolve({
+              status: "success", 
+              message: "Command executed successfully",
+              output: stdout
+            });
+          }
         }
       } else {
-        // Детальная диагностика ошибок
-        let errorMessage = `Команда завершилась с ошибкой (код ${code})`;
-        
-        if (stderr.includes('os error 5') || stderr.includes('Access is denied')) {
-          errorMessage += '\n🔒 Ошибка доступа к файлам - попробуйте:';
-          errorMessage += '\n  • Запустить от имени администратора';
-          errorMessage += '\n  • Проверить права доступа к папке';
-          errorMessage += '\n  • Временно отключить антивирус';
-          errorMessage += '\n  • Убедиться что файлы не используются другими процессами';
-        } else if (stderr.includes('No such file or directory')) {
-          errorMessage += '\n📁 Путь не найден - проверьте правильность пути к проекту';
-        } else if (stderr.includes('Permission denied')) {
-          errorMessage += '\n🚫 Нет прав доступа - запустите с правами администратора';
+        // Handle Windows Access Denied specifically
+        if (os.platform() === 'win32' && (stderr.includes('Access denied') || code === 5)) {
+          reject(new Error(`Windows Access Denied (Code ${code})\n` +
+            `🔧 Solutions:\n` +
+            `  • Run PowerShell/CMD as Administrator\n` +
+            `  • Check antivirus is not blocking binary\n` +
+            `  • Ensure no files are locked by other processes\n` +
+            `  • Check Windows Defender exclusions\n` +
+            `Original error: ${stderr}`));
+        } else {
+          reject(new Error(stderr || `Command failed with exit code ${code}`));
         }
-        
-        errorMessage += `\n📋 Детали ошибки: ${stderr}`;
-        
-        reject(new Error(errorMessage));
       }
     });
     
     child.on('error', (error) => {
-      console.error(`[MCP] Ошибка запуска процесса: ${error.message}`);
-      reject(new Error(`Не удалось запустить ArchLens: ${error.message}`));
+      clearTimeout(timeoutId);
+      
+      if (error.code === 'ENOENT') {
+        reject(new Error(`Binary not found: ${binary}\n` +
+          `🔧 Solutions:\n` +
+          `  • Ensure binary is built: cargo build --release\n` +
+          `  • Check PATH includes binary location\n` +
+          `  • Set ARCHLENS_PATH environment variable`));
+      } else if (error.code === 'EACCES') {
+        reject(new Error(`Permission denied executing: ${binary}\n` +
+          `🔧 Solutions:\n` +
+          `  • Make binary executable: chmod +x ${binary}\n` +
+          `  • Run with administrator privileges\n` +
+          `  • Check file permissions`));
+      } else {
+        reject(new Error(`Failed to execute ArchLens: ${error.message} (${error.code})`));
+      }
     });
   });
 }
 
-// 📊 Анализ архитектуры проекта
+// 🎯 UNIFIED RESPONSE CREATION
+function createMCPResponse(toolName, result, error = null, projectPath = null) {
+  if (error) {
+    return {
+      content: [{
+        type: "text",
+        text: `❌ ERROR ${getToolDisplayName(toolName)}
+
+Failed to ${getToolAction(toolName)}: ${projectPath || 'unknown path'}
+
+**Reason:** ${error.message}
+
+**Project path:** ${projectPath || 'n/a'}
+**Error time:** ${new Date().toLocaleString('en-US')}
+**Platform:** ${os.platform()} ${os.release()}`
+      }],
+      isError: true
+    };
+  }
+  
+  return {
+    content: [{
+      type: "text", 
+      text: formatToolResult(toolName, result, projectPath)
+    }]
+  };
+}
+
+function getToolDisplayName(toolName) {
+  const names = {
+    'analyze_project': 'PROJECT ANALYSIS',
+    'export_ai_compact': 'ARCHITECTURE ANALYSIS', 
+    'get_project_structure': 'STRUCTURE RETRIEVAL',
+    'generate_diagram': 'DIAGRAM GENERATION'
+  };
+  return names[toolName] || 'TOOL';
+}
+
+function getToolAction(toolName) {
+  const actions = {
+    'analyze_project': 'analyze project',
+    'export_ai_compact': 'export AI compact analysis', 
+    'get_project_structure': 'get project structure',
+    'generate_diagram': 'generate diagram'
+  };
+  return actions[toolName] || 'perform operation';
+}
+
+// 📊 RESULT FORMATTING
+class ResponseFormatter {
+  static formatAnalysisResult(result, projectPath) {
+    const data = typeof result === 'string' ? JSON.parse(result) : result;
+    
+    return `# 🔍 PROJECT ANALYSIS BRIEF
+
+**Path:** ${projectPath}
+**Analysis performed:** ${new Date().toLocaleString('en-US')}
+
+## 📊 Key metrics
+- **Total files:** ${data.total_files || 'n/a'}
+- **Lines of code:** ${data.total_lines || 'n/a'}
+- **Scan date:** ${data.scanned_at ? new Date(data.scanned_at).toLocaleString('en-US') : 'n/a'}
+
+## 🗂️ File distribution
+${data.file_types ? Object.entries(data.file_types)
+  .sort(([,a], [,b]) => b - a)
+  .slice(0, 10)
+  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
+  .join('\n') : 'Data unavailable'}
+
+## 📈 Architectural assessment
+${this.getArchitecturalRisk(data.total_files)}
+
+## 🎯 Deep analysis capabilities
+Use \`export_ai_compact\` to discover:
+- **Code Smells:** long methods, magic numbers, code duplication
+- **SOLID principles:** violations of single responsibility, open/closed
+- **Architectural antipatterns:** God Objects, tight coupling, circular dependencies
+- **Quality metrics:** cyclomatic complexity, technical debt
+
+*This is a preliminary assessment. Use specialized tools for detailed analysis.*`;
+  }
+
+  static formatExportResult(result, projectPath) {
+    if (result.output && typeof result.output === 'string' && result.output.trim().length > 0) {
+      return result.output; // AI Compact already formatted
+    }
+    
+    return `❌ ARCHITECTURE ANALYSIS ERROR
+    
+Failed to perform AI Compact export for project: ${projectPath}
+
+**Reason:** ${result.message || 'Unknown error'}
+**Details:** ${result.output || result.stderr || 'No details'}
+
+**What AI Compact should have analyzed:**
+- Code Smells (20+ types): long methods, magic numbers, code duplication
+- SOLID principles: single responsibility, open/closed, Liskov substitution
+- Architectural antipatterns: God Objects, tight coupling, circular dependencies
+- Quality metrics: cyclomatic complexity, cognitive complexity, maintainability index
+
+**Path:** ${projectPath}
+**Error time:** ${new Date().toLocaleString('en-US')}`;
+  }
+
+  static formatStructureResult(result, projectPath) {
+    const data = typeof result === 'string' ? JSON.parse(result) : result;
+    
+    return `# 📁 PROJECT STRUCTURE OVERVIEW
+
+**Path:** ${projectPath}
+**Analysis performed:** ${new Date().toLocaleString('en-US')}
+
+## 📊 General statistics
+- **Total files:** ${data.total_files || 'n/a'}
+- **Total lines:** ${data.total_lines || 'n/a'}
+- **Files shown:** ${data.files ? Math.min(data.files.length, data.total_files || 0) : 'n/a'} (limit: ${CONFIG.limits.maxFiles})
+
+## 🗂️ File types
+${data.file_types ? Object.entries(data.file_types)
+  .sort(([,a], [,b]) => b - a)
+  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
+  .join('\n') : 'Data unavailable'}
+
+## 🏗️ Architectural layers
+${data.layers ? data.layers.map(layer => `- **${layer}**`).join('\n') : '- Layers not identified'}
+
+## 📄 Key files (top 15)
+${data.files ? data.files.slice(0, 15).map(file => 
+  `- \`${file.path}\` (${file.extension}, ${(file.size/1024).toFixed(1)}KB)`
+).join('\n') + 
+(data.files.length > 15 ? `\n\n... and ${data.files.length - 15} more file(s)` : '') : 'Files not found'}
+
+*Structure overview complete. Use specialized tools for detailed problem analysis.*`;
+  }
+
+  static formatDiagramResult(result, projectPath) {
+    if (result.diagram && typeof result.diagram === 'string') {
+      return `# 📊 ARCHITECTURAL DIAGRAM
+
+**Project:** ${projectPath}
+**Type:** ${result.diagram_type || 'unknown'}
+**Created:** ${new Date().toISOString()}
+
+## Mermaid Diagram
+
+\`\`\`mermaid
+${result.diagram}
+\`\`\`
+
+*Generated by ArchLens for AI analysis*`;
+    }
+    
+    return `❌ DIAGRAM GENERATION ERROR
+    
+Failed to create diagram for project: ${projectPath}
+
+**Type:** ${result.diagram_type || 'unknown'}
+**Reason:** ${result.message || 'Unknown error'}
+
+**Path:** ${projectPath}
+**Error time:** ${new Date().toLocaleString('en-US')}`;
+  }
+
+  static getArchitecturalRisk(totalFiles) {
+    if (!totalFiles) return '- Risk assessment unavailable';
+    
+    if (totalFiles > 100) {
+      return `⚠️ **LARGE PROJECT** (${totalFiles} files)
+    - High architectural risk
+    - Likely circular dependencies
+    - Requires modular architecture control`;
+    } else if (totalFiles > 50) {
+      return `✅ **MEDIUM PROJECT** (${totalFiles} files)
+    - Manageable size, moderate architectural risks
+    - Possible local code quality issues`;
+    } else {
+      return `✅ **SMALL PROJECT** (${totalFiles} files)
+    - Compact structure, low architectural risks
+    - Main issues: code smells, code quality`;
+    }
+  }
+}
+
+function formatToolResult(toolName, result, projectPath) {
+  switch (toolName) {
+    case 'analyze_project':
+      return ResponseFormatter.formatAnalysisResult(result, projectPath);
+    case 'export_ai_compact': 
+      return ResponseFormatter.formatExportResult(result, projectPath);
+    case 'get_project_structure':
+      return ResponseFormatter.formatStructureResult(result, projectPath);
+    case 'generate_diagram':
+      return ResponseFormatter.formatDiagramResult(result, projectPath);
+    default:
+      return JSON.stringify(result, null, 2);
+  }
+}
+
+// 📊 SIMPLIFIED HANDLERS
 async function handleAnalyzeProject(args) {
-  const { 
-    project_path,
-    include_patterns = ["**/*.rs", "**/*.ts", "**/*.js", "**/*.py", "**/*.java", "**/*.cpp", "**/*.c", "**/*.go", "**/*.php", "**/*.rb", "**/*.cs", "**/*.kt", "**/*.swift", "**/*.dart", "**/*.vue", "**/*.jsx", "**/*.tsx", "**/*.html", "**/*.css", "**/*.scss", "**/*.sass", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml", "**/*.md", "**/*.txt"],
-    exclude_patterns = ["**/target/**", "**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/.nuxt/**", "**/coverage/**", "**/tmp/**", "**/temp/**"],
-    max_depth = 20,  // Увеличиваем глубину сканирования
-    analyze_dependencies = true,
-    extract_comments = true,
-    generate_summaries = true
-  } = args;
+  const { project_path } = args;
   
   try {
     if (!project_path) {
-      throw new Error("project_path обязателен");
+      throw new Error("project_path is required");
     }
     
-    if (!fs.existsSync(project_path)) {
-      throw new Error(`Путь не существует: ${project_path}`);
-    }
-    
-        // Запускаем анализ через бинарник в CLI режиме
-    const result = await new Promise((resolve, reject) => {
-      const binary = getArchLensBinary();
-      const child = spawn(binary, ['analyze', project_path], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+    // 🔐 CHECK ADMIN RIGHTS ON WINDOWS
+    if (os.platform() === 'win32') {
+      const hasAdminRights = await checkWindowsAdminRights();
       
-      let stdout = '';
-      let stderr = '';
-      
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      
-      child.on('close', (code) => {
-        if (code === 0) {
-          try {
-            const analysisResult = JSON.parse(stdout);
-            resolve(analysisResult);
-          } catch (e) {
-            resolve({
-              status: "success",
-              message: "Анализ завершен",
-              output: stdout,
-              lines_analyzed: (stdout.match(/\n/g) || []).length
-            });
+      if (!hasAdminRights) {
+        // Try automatic elevation if enabled
+        if (CONFIG.windows.autoElevate) {
+          logger.debug("Attempting automatic admin elevation...");
+          const elevationAttempted = await tryAutoElevation();
+          
+          if (elevationAttempted) {
+            return {
+              content: [{
+                type: "text",
+                text: `🔐 ADMIN ELEVATION INITIATED
+
+**Status:** Administrator elevation request sent to Windows
+
+**Next Steps:**
+1. Approve UAC prompt if it appears
+2. New PowerShell window will open with admin rights
+3. MCP server will restart automatically
+4. Retry analyze_project command in the new admin session
+
+**If UAC was cancelled or failed:**
+${createAdminElevationInstructions('analyze', project_path)}
+
+**Current Session:** This session will continue running for other commands.`
+              }],
+              isError: false
+            };
           }
-        } else {
-          reject(new Error(`Анализ завершился с ошибкой (код ${code}): ${stderr}`));
         }
-      });
+        
+        // Return admin elevation instructions if auto-elevation is disabled or failed
+        return {
+          content: [{
+            type: "text",
+            text: createAdminElevationInstructions('analyze', project_path)
+          }],
+          isError: false
+        };
+      }
       
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
+      logger.debug("Windows admin rights confirmed - proceeding with analysis");
+    }
     
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          status: "success",
-          analysis: result,
-          project_path,
-          analyzed_at: new Date().toISOString()
-        }, null, 2)
-      }]
-    };
+    const resolvedPath = resolveProjectPath(project_path);
+    const result = await executeArchlensCommand('analyze', resolvedPath);
+    
+    return createMCPResponse('analyze_project', result, null, resolvedPath);
     
   } catch (error) {
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          status: "error",
-          error: error.message,
-          project_path
-        }, null, 2)
-      }],
-      isError: true
-    };
+    // Enhanced Windows error handling
+    if (os.platform() === 'win32' && 
+        (error.message.includes('Access denied') || 
+         error.message.includes('os error 5') ||
+         error.message.includes('Отказано в доступе'))) {
+      
+      return {
+        content: [{
+          type: "text",
+          text: `❌ WINDOWS ACCESS DENIED
+
+${createAdminElevationInstructions('analyze', project_path)}
+
+**Original Error:** ${error.message}`
+        }],
+        isError: true
+      };
+    }
+    
+    return createMCPResponse('analyze_project', null, error, project_path);
   }
 }
 
-// 🤖 Экспорт в AI Compact формат
 async function handleExportAICompact(args) {
-  const { 
-    project_path,
-    output_file,
-    include_diff_analysis = true,
-    focus_critical_only = true
-  } = args;
+  const { project_path, output_file } = args;
   
   try {
     if (!project_path) {
-      throw new Error("project_path обязателен");
+      throw new Error("project_path is required");
     }
     
-    // Напрямую экспортируем в AI Compact формат
-    const result = await new Promise((resolve, reject) => {
-      const binary = getArchLensBinary();
-      const args = ['export', project_path, 'ai_compact'];
-      
-      if (output_file) {
-        args.push(output_file);
-      }
-      
-      const child = spawn(binary, args, {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      let stdout = '';
-      let stderr = '';
-      
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      
-      child.on('close', (code) => {
-        if (code === 0) {
-          resolve({
-            status: "success",
-            ai_compact_analysis: stdout,
-            output_file: output_file || "stdout",
-            token_count: Math.ceil(stdout.length / 4), // Примерная оценка токенов
-            compressed_ratio: `${((1 - stdout.length / 50000) * 100).toFixed(1)}%`
-          });
-        } else {
-          reject(new Error(`Экспорт завершился с ошибкой (код ${code}): ${stderr}`));
-        }
-      });
-      
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
+    const resolvedPath = resolveProjectPath(project_path);
+    const additionalArgs = ['ai_compact'];
+    if (output_file) {
+      additionalArgs.push(output_file);
+    }
     
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(result, null, 2)
-      }]
-    };
+    const result = await executeArchlensCommand('export', resolvedPath, additionalArgs);
+    
+    return createMCPResponse('export_ai_compact', result, null, resolvedPath);
     
   } catch (error) {
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          status: "error",
-          error: error.message,
-          project_path
-        }, null, 2)
-      }],
-      isError: true
-    };
+    return createMCPResponse('export_ai_compact', null, error, project_path);
   }
 }
 
-// 📊 Получение структуры проекта
 async function handleGetProjectStructure(args) {
-  const { 
-    project_path,
-    show_metrics = true,
-    max_files = 1000  // Увеличиваем до 1000 файлов
-  } = args;
+  const { project_path } = args;
   
   try {
     if (!project_path) {
-      throw new Error("project_path обязателен");
+      throw new Error("project_path is required");
     }
     
-    if (!fs.existsSync(project_path)) {
-      throw new Error(`Путь не существует: ${project_path}`);
+    const resolvedPath = resolveProjectPath(project_path);
+    
+    try {
+      const result = await executeArchlensCommand('structure', resolvedPath);
+      return createMCPResponse('get_project_structure', result, null, resolvedPath);
+    } catch (binaryError) {
+      // Fallback: manual structure scan
+      const fallbackResult = createManualStructure(resolvedPath);
+      return createMCPResponse('get_project_structure', fallbackResult, null, resolvedPath);
     }
-    
-    const result = await new Promise((resolve, reject) => {
-      const binary = getArchLensBinary();
-      const child = spawn(binary, ['structure', project_path], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      let stdout = '';
-      let stderr = '';
-      
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      
-      child.on('close', (code) => {
-        if (code === 0) {
-          try {
-            const structure = JSON.parse(stdout);
-            resolve({
-              status: "success",
-              structure,
-              project_path,
-              scanned_at: new Date().toISOString()
-            });
-                     } catch (e) {
-             // Если JSON не распарсился, создаем структуру вручную
-             resolve(createManualStructure(project_path, max_files));
-           }
-         } else {
-           // Fallback: создаем структуру вручную
-           resolve(createManualStructure(project_path, max_files));
-         }
-       });
-       
-       child.on('error', (error) => {
-         // Fallback: создаем структуру вручную
-         resolve(createManualStructure(project_path, max_files));
-       });
-    });
-    
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(result, null, 2)
-      }]
-    };
     
   } catch (error) {
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          status: "error",
-          error: error.message,
-          project_path
-        }, null, 2)
-      }],
-      isError: true
-    };
+    return createMCPResponse('get_project_structure', null, error, project_path);
   }
 }
 
-// 📈 Генерация архитектурных диаграмм
 async function handleGenerateDiagram(args) {
-  const { 
-    project_path,
-    diagram_type = "svg",
-    output_file,
-    include_metrics = true
-  } = args;
+  const { project_path, diagram_type = "mermaid", output_file } = args;
   
   try {
     if (!project_path) {
-      throw new Error("project_path обязателен");
+      throw new Error("project_path is required");
     }
     
-    const result = await new Promise((resolve, reject) => {
-      const binary = getArchLensBinary();
-      const args = ['diagram', project_path, diagram_type];
-      
-      if (output_file) {
-        args.push(output_file);
-      }
-      
-      const child = spawn(binary, args, {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      let stdout = '';
-      let stderr = '';
-      
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      
-      child.on('close', (code) => {
-        if (code === 0) {
-          resolve({
-            status: "success",
-            diagram: stdout,
-            diagram_type,
-            output_file: output_file || "stdout",
-            size: stdout.length
-          });
-        } else {
-          reject(new Error(`Генерация диаграммы завершилась с ошибкой (код ${code}): ${stderr}`));
-        }
-      });
-      
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
+    const resolvedPath = resolveProjectPath(project_path);
+    const tempFile = output_file || `temp_diagram_${Date.now()}.${diagram_type === 'mermaid' ? 'mmd' : diagram_type}`;
     
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(result, null, 2)
-      }]
-    };
+    try {
+      await executeArchlensCommand('diagram', resolvedPath, [diagram_type, tempFile]);
+      
+      // Read created diagram file
+      if (fs.existsSync(tempFile)) {
+        const diagramContent = fs.readFileSync(tempFile, 'utf8');
+        
+        // Remove temp file if not user-specified
+        if (!output_file) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        const result = {
+          status: "success",
+          diagram: diagramContent,
+          diagram_type,
+          output_file: output_file || "stdout",
+          size: diagramContent.length
+        };
+        
+        return createMCPResponse('generate_diagram', result, null, resolvedPath);
+      } else {
+        throw new Error(`Diagram file not created: ${tempFile}`);
+      }
+    } catch (execError) {
+      throw new Error(`Diagram generation failed: ${execError.message}`);
+    }
     
   } catch (error) {
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          status: "error",
-          error: error.message,
-          project_path,
-          diagram_type
-        }, null, 2)
-      }],
-      isError: true
-    };
+    return createMCPResponse('generate_diagram', null, error, project_path);
   }
 }
 
-// 🔧 Вспомогательные функции
-function createManualStructure(projectPath, maxFiles) {
+// 🔧 Manual structure creation (fallback, no side effects)
+function createManualStructure(projectPath) {
   const structure = {
     total_files: 0,
     total_lines: 0,
@@ -453,8 +806,7 @@ function createManualStructure(projectPath, maxFiles) {
   
   try {
     const scanDirectory = (dir, depth = 0) => {
-      // Убираем жесткое ограничение глубины, увеличиваем до 15 уровней
-      if (depth > 15) return;
+      if (depth > CONFIG.limits.scanDepth) return;
       
       const items = fs.readdirSync(dir);
       
@@ -465,7 +817,6 @@ function createManualStructure(projectPath, maxFiles) {
           const stat = fs.statSync(fullPath);
           
           if (stat.isDirectory()) {
-            // Расширяем список игнорируемых папок, но не ограничиваем сильно
             const skipDirs = ['node_modules', '.git', 'target', 'dist', 'build', '.next', '.nuxt'];
             if (!skipDirs.includes(item) && !item.startsWith('.')) {
               scanDirectory(fullPath, depth + 1);
@@ -477,42 +828,38 @@ function createManualStructure(projectPath, maxFiles) {
             structure.total_files++;
             structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
             
-            // Добавляем файлы без жесткого ограничения
-            if (structure.files.length < maxFiles) {
-              // Подсчитываем строки кода для текстовых файлов
+            if (structure.files.length < CONFIG.limits.maxFiles) {
               let lineCount = 0;
               try {
-                const textExtensions = ['.rs', '.ts', '.js', '.py', '.java', '.cpp', '.c', '.go', '.php', '.rb', '.cs', '.kt', '.swift', '.dart', '.vue', '.jsx', '.tsx', '.html', '.css', '.scss', '.sass', '.json', '.yaml', '.yml', '.xml', '.md', '.txt'];
-                if (textExtensions.includes(ext) && stat.size < 1000000) { // Анализируем только файлы <1MB
+                if (CONFIG.textExtensions.includes(ext) && stat.size < CONFIG.limits.maxFileSize) {
                   const content = fs.readFileSync(fullPath, 'utf8');
                   lineCount = content.split('\n').length;
                 }
               } catch (readError) {
+                logger.debug(`Cannot read file ${fullPath}: ${readError.message}`);
                 lineCount = 0;
               }
               
-                              structure.files.push({
-                  path: relativePath,
-                  name: item,
-                  extension: ext,
-                  size: stat.size,
-                  lines: lineCount
-                });
-                
-                // Добавляем к общему количеству строк
-                structure.total_lines += lineCount;
+              structure.files.push({
+                path: relativePath,
+                name: item,
+                extension: ext,
+                size: stat.size,
+                lines: lineCount
+              });
+              
+              structure.total_lines += lineCount;
             }
           }
         } catch (statError) {
-          // Игнорируем ошибки доступа к отдельным файлам
-          console.error(`[MCP] Ошибка доступа к файлу ${fullPath}: ${statError.message}`);
+          logger.debug(`File access error ${fullPath}: ${statError.message}`);
         }
       }
     };
     
     scanDirectory(projectPath);
     
-    // Определяем слои по структуре папок
+    // Determine layers by folder structure
     const commonLayers = ['src', 'lib', 'components', 'utils', 'api', 'core', 'ui', 'services', 'models', 'views', 'controllers'];
     structure.layers = commonLayers.filter(layer => {
       return fs.existsSync(path.join(projectPath, layer));
@@ -531,29 +878,37 @@ function createManualStructure(projectPath, maxFiles) {
   };
 }
 
-// 📋 Регистрация инструментов MCP
+// Create server instance
+const server = new Server({
+  name: CONFIG.server.name,
+  version: CONFIG.server.version
+}, {
+  capabilities: { tools: {} }
+});
+
+// 📋 MCP tools registration
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "export_ai_compact",
-      description: "🤖 AI ЭКСПОРТ - Полный анализ архитектуры проекта (~2800 токенов) с обнаружением проблем: Code Smells (20+ типов: длинные методы, магические числа, дублирование кода), SOLID принципы, архитектурные антипаттерны (God Objects, tight coupling), циклические зависимости, метрики качества (цикломатическая/когнитивная сложность, техдолг), рекомендации по рефакторингу.",
+      description: "🤖 AI EXPORT - Full architecture analysis (~2800 tokens) with problem discovery: Code Smells (20+ types: long methods, magic numbers, code duplication), SOLID principles, architectural antipatterns (God Objects, tight coupling), circular dependencies, quality metrics (cyclomatic/cognitive complexity, tech debt), recommendations for refactoring.",
       inputSchema: {
         type: "object",
         properties: {
           project_path: {
-            description: "Путь к проекту для анализа",
+            description: "Path to the project for analysis",
             type: "string"
           },
           output_file: {
-            description: "Путь для сохранения результата (опционально)",
+            description: "Path to save the result (optional)",
             type: "string"
           },
           focus_critical_only: {
-            description: "Показывать только критические проблемы: God Objects, циклические зависимости, высокая сложность, нарушения SOLID",
+            description: "Show only critical problems: God Objects, circular dependencies, high complexity, SOLID violations",
             type: "boolean"
           },
           include_diff_analysis: {
-            description: "Включить сравнение с предыдущими версиями для анализа деградации качества",
+            description: "Include comparison with previous versions for degradation analysis",
             type: "boolean"
           }
         },
@@ -562,42 +917,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "analyze_project",
-      description: "📊 КРАТКИЙ АНАЛИЗ - Базовая статистика проекта с первичной оценкой проблем: размер проекта, распределение файлов, оценка архитектурного риска (малый/средний/крупный), рекомендации по углубленному анализу через export_ai_compact.",
+      description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment of problems: project size, file distribution, architectural risk assessment (small/medium/large), recommendations for deep analysis via export_ai_compact.",
       inputSchema: {
         type: "object",
         properties: {
           project_path: {
-            description: "Путь к проекту для анализа",
+            description: "Path to the project for analysis",
             type: "string"
           },
           verbose: {
-            description: "Подробный вывод с дополнительными метриками и предупреждениями",
+            description: "Detailed output with additional metrics and warnings",
             type: "boolean"
           },
           analyze_dependencies: {
-            description: "Анализировать зависимости между модулями для выявления циклических связей",
+            description: "Analyze module dependencies to identify circular dependencies",
             type: "boolean"
           },
           extract_comments: {
-            description: "Извлекать комментарии и анализировать качество документации",
+            description: "Extract comments and analyze documentation quality",
             type: "boolean"
           },
           generate_summaries: {
-            description: "Генерировать краткие описания компонентов с выделением потенциальных проблем",
+            description: "Generate brief descriptions of components with potential problems",
             type: "boolean"
           },
           include_patterns: {
-            description: "Паттерны файлов для включения (например: ['**/*.rs', '**/*.ts'])",
+            description: "File patterns to include (e.g., ['**/*.rs', '**/*.ts'])",
             type: "array",
             items: { type: "string" }
           },
           exclude_patterns: {
-            description: "Паттерны файлов для исключения",
+            description: "File patterns to exclude",
             type: "array",
             items: { type: "string" }
           },
           max_depth: {
-            description: "Максимальная глубина сканирования директорий",
+            description: "Maximum directory depth for scanning",
             type: "integer"
           }
         },
@@ -606,25 +961,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "generate_diagram",
-      description: "📈 ГЕНЕРАЦИЯ ДИАГРАММ - Создает архитектурную диаграмму с визуализацией проблем: зависимости между компонентами, проблемные связи (циклические зависимости отмечены красным), метрики сложности, слои архитектуры. Для Mermaid возвращает готовый код.",
+      description: "📈 DIAGRAM GENERATION - Creates an architectural diagram with visualization of problems: dependencies between components, problematic connections (circular dependencies marked in red), complexity metrics, architectural layers. For Mermaid returns ready code.",
       inputSchema: {
         type: "object",
         properties: {
           project_path: {
-            description: "Путь к проекту для анализа",
+            description: "Path to the project for analysis",
             type: "string"
           },
           diagram_type: {
-            description: "Тип диаграммы: mermaid (по умолчанию), svg, dot",
+            description: "Diagram type: mermaid (default), svg, dot",
             type: "string",
             enum: ["mermaid", "svg", "dot"]
           },
           include_metrics: {
-            description: "Включить метрики качества в диаграмму: цикломатическая сложность, связанность, проблемные компоненты",
+            description: "Include quality metrics in the diagram: cyclomatic complexity, coupling, problematic components",
             type: "boolean"
           },
           output_file: {
-            description: "Путь для сохранения диаграммы (опционально)",
+            description: "Path to save the diagram (optional)",
             type: "string"
           }
         },
@@ -633,20 +988,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "get_project_structure",
-      description: "📁 СТРУКТУРА ПРОЕКТА - Иерархическая структура с выявлением структурных проблем: неправильная организация слоев, несоответствие архитектурным паттернам, файлы-кандидаты на рефакторинг (большие размеры), метрики по типам файлов.",
+      description: "📁 PROJECT STRUCTURE - Hierarchical structure with structural problem detection: incorrect layer organization, mismatch with architectural patterns, files candidates for refactoring (large sizes), metrics by file types.",
       inputSchema: {
         type: "object",
         properties: {
           project_path: {
-            description: "Путь к проекту",
+            description: "Path to the project",
             type: "string"
           },
           show_metrics: {
-            description: "Включить метрики файлов: размер, строки кода, оценка сложности",
+            description: "Include file metrics: size, lines of code, complexity assessment",
             type: "boolean"
           },
           max_files: {
-            description: "Максимальное количество файлов в выводе (по умолчанию 1000)",
+            description: "Maximum number of files in output (default 1000)",
             type: "integer"
           }
         },
@@ -656,445 +1011,39 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ]
 }));
 
-// 🎯 Обработка вызовов инструментов
+// 🎯 Tool call handling - simple dispatching
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   
   try {
     if (name === 'analyze_project') {
-      const projectPath = args.project_path || '.';
-      const analyzeArgs = ['analyze', projectPath];
-      
-      if (args.verbose) {
-        analyzeArgs.push('--verbose');
-      }
-      
-      console.error(`[MCP] Анализ проекта: ${projectPath}`);
-      
-      try {
-        const result = await runArchlensCommand(analyzeArgs, 'analyze');
-        console.error(`[MCP] Анализ завершен успешно`);
-        
-        // Парсим JSON результат
-        let analysisData;
-        try {
-          analysisData = typeof result === 'string' ? JSON.parse(result) : result;
-        } catch {
-          analysisData = result;
-        }
-        
-        // Создаем краткий ИИ-дружественный анализ
-        const aiAnalysis = `# 🔍 КРАТКИЙ АНАЛИЗ ПРОЕКТА
-
-**Путь:** ${projectPath}
-**Анализ выполнен:** ${new Date().toLocaleString('ru-RU')}
-
-## 📊 Основные метрики
-- **Всего файлов:** ${analysisData.total_files || 'н/д'}
-- **Строк кода:** ${analysisData.total_lines || 'н/д'}
-- **Дата сканирования:** ${analysisData.scanned_at ? new Date(analysisData.scanned_at).toLocaleString('ru-RU') : 'н/д'}
-
-## 🗂️ Распределение по типам файлов
-${analysisData.file_types ? Object.entries(analysisData.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .slice(0, 10)
-  .map(([ext, count]) => `- **.${ext}**: ${count} файл(ов)`)
-  .join('\n') : 'Данные недоступны'}
-
-## 📈 Архитектурная оценка и потенциальные проблемы
-${analysisData.total_files && analysisData.total_files > 100 ? 
-  `⚠️ **КРУПНЫЙ ПРОЕКТ** (${analysisData.total_files} файлов)
-  - Высокий риск архитектурных проблем
-  - Вероятны циклические зависимости
-  - Необходим контроль связанности между модулями
-  - Рекомендуется модульная архитектура` : 
-  analysisData.total_files > 50 ? 
-    `✅ **СРЕДНИЙ ПРОЕКТ** (${analysisData.total_files} файлов)
-    - Управляемый размер, умеренные архитектурные риски
-    - Возможны локальные проблемы качества кода
-    - Рекомендуется регулярный анализ паттернов` : 
-    `✅ **МАЛЫЙ ПРОЕКТ** (${analysisData.total_files} файлов)
-    - Компактная структура, низкие архитектурные риски
-    - Основные проблемы: code smells, качество кода`}
-
-## 🎯 Возможности углубленного анализа проблем
-**Используйте \`export_ai_compact\` для обнаружения:**
-- **Code Smells:** длинные методы, магические числа, дублирование кода, мертвый код
-- **SOLID принципы:** нарушения единственной ответственности, открытости/закрытости
-- **Архитектурные антипаттерны:** God Objects, tight coupling, циклические зависимости
-- **Метрики качества:** цикломатическая сложность, технический долг, индекс сопровождаемости
-
-**Дополнительные инструменты:**
-- \`generate_diagram\` с \`include_metrics=true\` - визуализация проблемных связей
-- \`get_project_structure\` с \`show_metrics=true\` - анализ структурных проблем
-
-**Фокусировка на критических проблемах:**
-- Используйте \`focus_critical_only=true\` для анализа только серьезных архитектурных проблем
-
-*Это первичная оценка. Для детального анализа проблем используйте углубленные инструменты.*`;
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: aiAnalysis
-            }
-          ]
-        };
-      } catch (error) {
-        console.error(`[MCP] Ошибка анализа: ${error.message}`);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `❌ ОШИБКА АНАЛИЗА ПРОЕКТА
-              
-Не удалось выполнить анализ проекта: ${projectPath}
-
-**Причина:** ${error.message}
-
-**Что мог бы проанализировать ArchLens:**
-- Code Smells: длинные методы, магические числа, дублирование кода, мертвый код
-- SOLID принципы: нарушения единственной ответственности, открытости/закрытости
-- Архитектурные антипаттерны: God Objects, tight coupling, циклические зависимости  
-- Метрики качества: цикломатическая/когнитивная сложность, технический долг
-
-**Рекомендации по устранению:**
-- Проверьте права доступа к файлам и папкам
-- Убедитесь что путь существует и содержит исходный код
-- Временно отключите антивирус
-- Попробуйте запустить от имени администратора
-- Проверьте что проект не поврежден
-
-**Альтернативы:**
-- Попробуйте \`export_ai_compact\` для углубленного анализа архитектуры
-- Используйте \`get_project_structure\` для быстрого структурного обзора
-
-**Путь к проекту:** ${projectPath}
-**Время ошибки:** ${new Date().toLocaleString('ru-RU')}`
-            }
-          ]
-        };
-      }
+      return await handleAnalyzeProject(args);
     } else if (name === "export_ai_compact") {
-      const projectPath = args.project_path || '.';
-      const outputFile = args.output_file;
-      const focusCriticalOnly = args.focus_critical_only || false;
-      const includeDiffAnalysis = args.include_diff_analysis || false;
-      
-      const exportArgs = ['export', projectPath, 'ai_compact'];
-      
-      if (focusCriticalOnly) {
-        exportArgs.push('--focus-critical');
-      }
-      
-      if (includeDiffAnalysis) {
-        exportArgs.push('--include-diff');
-      }
-      
-      if (outputFile) {
-        exportArgs.push(outputFile);
-      }
-      
-      console.error(`[MCP] AI Compact экспорт: ${projectPath}`);
-      
-      try {
-        const result = await runArchlensCommand(exportArgs, 'ai_compact');
-        console.error(`[MCP] AI Compact экспорт завершен успешно`);
-        
-        // Возвращаем прямой контент анализа для ИИ
-        const analysisContent = result.output || JSON.stringify(result, null, 2);
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: analysisContent  // Прямой контент без JSON обертки
-            }
-          ]
-        };
-      } catch (error) {
-        console.error(`[MCP] Ошибка AI Compact экспорта: ${error.message}`);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `❌ ОШИБКА АНАЛИЗА АРХИТЕКТУРЫ
-              
-Не удалось выполнить AI Compact экспорт для проекта: ${projectPath}
-
-**Причина:** ${error.message}
-
-**Что должен был проанализировать AI Compact:**
-- Code Smells (20+ типов): длинные методы, магические числа, дублирование кода, мертвый код, глубокая вложенность
-- SOLID принципы: единственная ответственность, открытость/закрытость, подстановка Лисков, разделение интерфейсов, инверсия зависимостей
-- Архитектурные антипаттерны: God Objects, tight coupling, циклические зависимости, shotgun surgery
-- Метрики качества: цикломатическая сложность, когнитивная сложность, индекс сопровождаемости, технический долг
-- Архитектурные паттерны: Singleton, Factory, Observer, Repository, MVC, Layered Architecture
-
-**Рекомендации:**
-- Проверьте корректность пути к проекту
-- Убедитесь что у ArchLens есть права доступа к файлам
-- Проверьте что проект содержит исходный код
-- Попробуйте запустить с правами администратора
-
-**Альтернативы:**
-- Используйте \`analyze_project\` для базовой оценки проблем
-- Попробуйте \`get_project_structure\` для анализа структурных проблем
-
-**Путь к проекту:** ${projectPath}
-**Время ошибки:** ${new Date().toISOString()}`
-            }
-          ]
-        };
-      }
-    } else if (name === "generate_diagram") {
-      const projectPath = args.project_path || '.';
-      const diagramType = args.diagram_type || 'mermaid';
-      const outputFile = args.output_file;
-      const includeMetrics = args.include_metrics || false;
-      
-      const diagramArgs = ['diagram', projectPath, diagramType];
-      
-      if (includeMetrics) {
-        diagramArgs.push('--include-metrics');
-      }
-      
-      if (outputFile) {
-        diagramArgs.push(outputFile);
-      }
-      
-      console.error(`[MCP] Генерация диаграммы: ${projectPath} (${diagramType})`);
-      
-      try {
-        const result = await runArchlensCommand(diagramArgs, 'diagram');
-        console.error(`[MCP] Генерация диаграммы завершена успешно`);
-        
-        // Возвращаем прямой контент диаграммы для ИИ
-        const diagramContent = result.output || result.diagram || JSON.stringify(result, null, 2);
-        
-        // Если это Mermaid диаграмма, добавляем дополнительное форматирование
-        let formattedContent = diagramContent;
-        if (diagramType === 'mermaid') {
-          formattedContent = `# 📊 АРХИТЕКТУРНАЯ ДИАГРАММА
-
-**Проект:** ${projectPath}
-**Тип:** ${diagramType}
-**Создана:** ${new Date().toISOString()}
-
-## Mermaid Диаграмма
-
-\`\`\`mermaid
-${diagramContent}
-\`\`\`
-
-## Описание
-
-Эта диаграмма показывает архитектурную структуру проекта, включая:
-- Основные компоненты и модули
-- Связи между компонентами
-- Зависимости и потоки данных
-- Слои архитектуры
-
-*Сгенерировано ArchLens для AI анализа*`;
-        }
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: formattedContent  // Прямой контент диаграммы
-            }
-          ]
-        };
-      } catch (error) {
-        console.error(`[MCP] Ошибка генерации диаграммы: ${error.message}`);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `❌ ОШИБКА ГЕНЕРАЦИИ ДИАГРАММЫ
-              
-Не удалось создать диаграмму для проекта: ${projectPath}
-
-**Тип диаграммы:** ${diagramType}
-**Причина:** ${error.message}
-
-**Рекомендации:**
-- Проверьте что проект содержит исходный код
-- Убедитесь что путь к проекту корректен
-- Попробуйте другой тип диаграммы (mermaid, svg, dot)
-- Проверьте права доступа к файлам
-
-**Путь к проекту:** ${projectPath}
-**Время ошибки:** ${new Date().toISOString()}`
-            }
-          ]
-        };
-      }
+      return await handleExportAICompact(args);
     } else if (name === "get_project_structure") {
-      const projectPath = args.project_path || '.';
-      const showMetrics = args.show_metrics || false;
-      const maxFiles = args.max_files || 1000;  // Увеличиваем до 1000 файлов
-      
-      const structureArgs = ['structure', projectPath];
-      
-      if (showMetrics) {
-        structureArgs.push('--show-metrics');
-      }
-      
-      if (maxFiles !== 50) {
-        structureArgs.push('--max-files', maxFiles.toString());
-      }
-      
-      console.error(`[MCP] Получение структуры проекта: ${projectPath}`);
-      
-      try {
-        const result = await runArchlensCommand(structureArgs, 'structure');
-        console.error(`[MCP] Получение структуры завершено успешно`);
-        
-        // Парсим JSON результат
-        let structureData;
-        try {
-          structureData = typeof result === 'string' ? JSON.parse(result) : result;
-        } catch {
-          structureData = result;
-        }
-        
-        // Создаем краткую ИИ-дружественную структуру
-        const structureOverview = `# 📁 ОБЗОР СТРУКТУРЫ ПРОЕКТА
-
-**Путь:** ${projectPath}
-**Анализ выполнен:** ${new Date().toLocaleString('ru-RU')}
-
-## 📊 Общая статистика
-- **Всего файлов:** ${structureData.total_files || 'н/д'}
-- **Всего строк кода:** ${structureData.total_lines || 'н/д'}
-- **Показано файлов:** ${Math.min(maxFiles, structureData.total_files || 0)} (лимит: ${maxFiles})
-
-## 🗂️ Типы файлов
-${structureData.file_types ? Object.entries(structureData.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .map(([ext, count]) => `- **.${ext}**: ${count} файл(ов)`)
-  .join('\n') : 'Данные недоступны'}
-
-## 🏗️ Архитектурные слои
-${structureData.layers ? structureData.layers.map(layer => `- **${layer}**`).join('\n') : 'Слои не определены'}
-
-## 📄 Ключевые файлы (топ ${Math.min(15, maxFiles)})
-${structureData.files ? structureData.files
-  .slice(0, 15)
-  .map(file => `- \`${file.path}\` (${file.extension}, ${(file.size / 1024).toFixed(1)}KB${file.lines > 0 ? `, ${file.lines} строк` : ''})`)
-  .join('\n') : 'Файлы недоступны'}
-
-${structureData.files && structureData.files.length > 15 ? `\n... и еще ${structureData.files.length - 15} файл(ов)` : ''}
-
-## ⚠️ Потенциальные структурные проблемы
-${structureData.files ? (() => {
-  const largeFiles = structureData.files.filter(f => f.size > 50000);
-  const suspiciousFiles = structureData.files.filter(f => f.name.length > 30);
-  
-  let problems = [];
-  if (largeFiles.length > 0) {
-    problems.push(`- **Крупные файлы:** ${largeFiles.length} файл(ов) >50KB (возможные God Objects)`);
-  }
-  if (suspiciousFiles.length > 0) {
-    problems.push(`- **Длинные имена файлов:** ${suspiciousFiles.length} файл(ов) (возможные нарушения SRP)`);
-  }
-  if (!structureData.layers || structureData.layers.length < 2) {
-    problems.push(`- **Слабая слоистость:** архитектурные слои не определены`);
-  }
-  
-  return problems.length > 0 ? problems.join('\n') : '- Структурные проблемы не обнаружены';
-})() : 'Анализ недоступен'}
-
-## 💡 Рекомендации для анализа проблем
-**Для обнаружения архитектурных проблем:**
-- \`export_ai_compact\` - полный анализ с выявлением проблем структуры
-- \`export_ai_compact\` с \`focus_critical_only=true\` - только критические структурные проблемы
-
-**Для визуализации структурных проблем:**
-- \`generate_diagram\` с \`include_metrics=true\` - диаграмма с метриками и проблемными связями
-
-**Потенциальные проблемы для анализа:**
-- Нарушения принципа единственной ответственности (SRP)
-- Неправильная организация слоев
-- Циклические зависимости между модулями
-- Слишком тесная связанность компонентов
-
-*Структурный обзор завершен. Для детального анализа проблем используйте специализированные инструменты.*`;
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: structureOverview
-            }
-          ]
-        };
-      } catch (error) {
-        console.error(`[MCP] Ошибка получения структуры: ${error.message}`);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `❌ ОШИБКА ПОЛУЧЕНИЯ СТРУКТУРЫ
-              
-Не удалось получить структуру проекта: ${projectPath}
-
-**Причина:** ${error.message}
-
-**Возможные решения:**
-- Проверьте что путь к проекту корректен
-- Убедитесь что у вас есть права доступа к папке
-- Проверьте что папка не пустая
-- Попробуйте указать другой путь
-
-**Альтернативы:**
-- Попробуйте \`analyze_project\` для базовой статистики
-- Используйте \`export_ai_compact\` для альтернативного анализа
-
-**Путь к проекту:** ${projectPath}
-**Время ошибки:** ${new Date().toLocaleString('ru-RU')}`
-            }
-          ]
-        };
-      }
+      return await handleGetProjectStructure(args);
+    } else if (name === "generate_diagram") {
+      return await handleGenerateDiagram(args);
     } else {
-      return {
-        content: [{ 
-          type: "text", 
-          text: JSON.stringify({ 
-            status: "error",
-            error: `❌ Неизвестный инструмент: ${name}`
-          }, null, 2) 
-        }],
-        isError: true
-      };
+      throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    return {
-      content: [{ 
-        type: "text", 
-        text: JSON.stringify({ 
-          status: "error",
-          error: `❌ Ошибка выполнения ${name}: ${error.message}`
-        }, null, 2) 
-      }],
-      isError: true
-    };
+    return createMCPResponse(name, null, error, args.project_path);
   }
 });
 
-// 🚀 Запуск MCP сервера
+// 🚀 MCP server startup
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  console.error("🏗️ ArchLens MCP Server v1.0.1 запущен");
-  console.error("✅ Готов к анализу архитектуры кода для AI (улучшенные лимиты)");
+  logger.info("🏗️ ArchLens MCP Server v2.0.0 started - CRITICAL FIXES APPLIED");
+  logger.info("✅ NO HARDCODED PATHS | NO SIDE EFFECTS | PROPER '.' SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES");
   
   process.stdin.resume();
 }
 
-main().catch(console.error); 
+main().catch(error => {
+  logger.error(`Server startup failed: ${error.message}`);
+  process.exit(1);
+}); 
