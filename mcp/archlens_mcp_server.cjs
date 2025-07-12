@@ -143,6 +143,24 @@ function resolveProjectPath(inputPath) {
     throw new Error('project_path is required and must be a string');
   }
   
+  // STRICT VALIDATION: Reject common relative path patterns
+  if (inputPath === '.' || inputPath === '..' || 
+      inputPath.startsWith('./') || inputPath.startsWith('../') ||
+      inputPath.startsWith('.\\') || inputPath.startsWith('..\\')) {
+    throw new Error(`❌ RELATIVE PATHS NOT ALLOWED
+
+Received: "${inputPath}"
+
+MCP requires ABSOLUTE paths only. Use full directory paths like:
+- Linux/Mac: "/home/user/project" or "/absolute/path/to/project"  
+- Windows: "C:\\Users\\User\\Project" or "D:\\absolute\\path\\to\\project"
+
+❌ NOT ALLOWED: ".", "..", "./src", "../project", ".\\src"
+✅ REQUIRED: Full absolute paths only
+
+Please provide the complete absolute path to your project directory.`);
+  }
+  
   let resolvedPath;
   
   // ALWAYS resolve to absolute path - no relative paths allowed in MCP
@@ -150,9 +168,8 @@ function resolveProjectPath(inputPath) {
     resolvedPath = path.normalize(inputPath);
     logger.debug(`Using absolute path: ${resolvedPath}`);
   } else {
-    // Convert ANY relative path (including ".") to absolute
-    resolvedPath = path.resolve(CONFIG.paths.workingDirectory, inputPath);
-    logger.debug(`Converted relative path "${inputPath}" to absolute: ${resolvedPath}`);
+    // This should never happen due to validation above, but keep as fallback
+    throw new Error(`❌ Path "${inputPath}" is not absolute. MCP requires full absolute paths only.`);
   }
   
   // Validate path exists and is accessible
@@ -723,6 +740,27 @@ async function handleExportAICompact(args) {
       throw new Error("project_path is required");
     }
     
+    // Early validation for user-friendly error messages
+    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
+      return {
+        content: [{
+          type: "text",
+          text: `❌ RELATIVE PATH REJECTED
+
+You provided: "${project_path}"
+
+This MCP server requires ABSOLUTE paths only. Examples:
+- ✅ "/home/user/myproject" 
+- ✅ "C:\\Users\\User\\MyProject"
+- ❌ "." (current directory)
+- ❌ "./src" (relative path)
+
+Please provide the complete absolute path to your project directory.`
+        }],
+        isError: true
+      };
+    }
+    
     const resolvedPath = resolveProjectPath(project_path);
     const additionalArgs = ['ai_compact'];
     if (output_file) {
@@ -744,6 +782,27 @@ async function handleGetProjectStructure(args) {
   try {
     if (!project_path) {
       throw new Error("project_path is required");
+    }
+    
+    // Early validation for user-friendly error messages
+    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
+      return {
+        content: [{
+          type: "text",
+          text: `❌ RELATIVE PATH REJECTED
+
+You provided: "${project_path}"
+
+This MCP server requires ABSOLUTE paths only. Examples:
+- ✅ "/home/user/myproject" 
+- ✅ "C:\\Users\\User\\MyProject"
+- ❌ "." (current directory)
+- ❌ "./src" (relative path)
+
+Please provide the complete absolute path to your project directory.`
+        }],
+        isError: true
+      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -768,6 +827,27 @@ async function handleGenerateDiagram(args) {
   try {
     if (!project_path) {
       throw new Error("project_path is required");
+    }
+    
+    // Early validation for user-friendly error messages
+    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
+      return {
+        content: [{
+          type: "text",
+          text: `❌ RELATIVE PATH REJECTED
+
+You provided: "${project_path}"
+
+This MCP server requires ABSOLUTE paths only. Examples:
+- ✅ "/home/user/myproject" 
+- ✅ "C:\\Users\\User\\MyProject"
+- ❌ "." (current directory)
+- ❌ "./src" (relative path)
+
+Please provide the complete absolute path to your project directory.`
+        }],
+        isError: true
+      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -908,7 +988,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           project_path: {
-            description: "Path to the project for analysis",
+            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
             type: "string"
           },
           output_file: {
@@ -927,14 +1007,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["project_path"]
       }
     },
-    {
+            {
       name: "analyze_project",
       description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment of problems: project size, file distribution, architectural risk assessment (small/medium/large), recommendations for deep analysis via export_ai_compact.",
       inputSchema: {
         type: "object",
         properties: {
           project_path: {
-            description: "Path to the project for analysis",
+            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
             type: "string"
           },
           verbose: {
@@ -978,7 +1058,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           project_path: {
-            description: "Path to the project for analysis",
+            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
             type: "string"
           },
           diagram_type: {
@@ -1005,7 +1085,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           project_path: {
-            description: "Path to the project",
+            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
             type: "string"
           },
           show_metrics: {
