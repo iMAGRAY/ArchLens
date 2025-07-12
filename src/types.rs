@@ -209,7 +209,7 @@ pub struct AnalysisConfig {
 impl Default for AnalysisConfig {
     fn default() -> Self {
         AnalysisConfig {
-            project_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            project_path: crate::get_default_project_path(),
             include_patterns: vec![
                 "**/*.rs".to_string(), 
                 "**/*.ts".to_string(), 

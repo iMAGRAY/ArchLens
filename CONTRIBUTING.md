@@ -156,7 +156,7 @@ match fs::read_to_string(path) {
 /// 
 /// # Examples
 /// ```
-/// let result = analyze_project("./src", &default_config())?;
+/// let result = analyze_project("/absolute/path/to/src", &default_config())?;
 /// println!("Found {} files", result.total_files);
 /// ```
 pub fn analyze_project(project_path: &Path, config: &AnalysisConfig) -> Result<AnalysisResult> {
@@ -260,7 +260,7 @@ function validateMCPRequest(params) {
 ///     Some(10)
 /// )?;
 /// 
-/// let files = scanner.scan_project(Path::new("./src"))?;
+/// let files = scanner.scan_project(Path::new("/absolute/path/to/src"))?;
 /// println!("Found {} Rust files", files.len());
 /// ```
 pub struct FileScanner {
@@ -325,7 +325,7 @@ use std::process::Command;
 
 #[test]
 fn test_cli_analyze_command() {
-    let output = Command::new("./target/release/archlens")
+    let output = Command::new("/absolute/path/to/target/release/archlens")
         .args(&["analyze", &project_path])
         .output()
         .expect("Failed to execute command");

@@ -5,7 +5,7 @@
   "main": "archlens_mcp_server.cjs",
 
   "bin": {
-    "archlens-mcp": "./archlens_mcp_server.cjs"
+    "archlens-mcp": "archlens_mcp_server.cjs"
   },
   
   "os": ["win32", "darwin", "linux"],

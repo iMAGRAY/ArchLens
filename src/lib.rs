@@ -74,6 +74,44 @@ pub mod enrichment;
 /// Graph analysis and building
 pub mod graph;
 
+/// Utility function to ensure we always work with absolute paths
+/// This prevents issues with relative paths in MCP and other integrations
+pub fn ensure_absolute_path<P: AsRef<std::path::Path>>(path: P) -> std::path::PathBuf {
+    use std::path::PathBuf;
+    
+    let path = path.as_ref();
+    
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        // Convert relative path to absolute
+        match std::env::current_dir() {
+            Ok(current) => current.join(path),
+            Err(_) => {
+                // Fallback for current_dir failure
+                if cfg!(windows) {
+                    PathBuf::from("C:\\").join(path)
+                } else {
+                    PathBuf::from("/tmp").join(path)
+                }
+            }
+        }
+    }
+}
+
+/// Get default project path as absolute path
+/// Used when no project path is specified
+pub fn get_default_project_path() -> std::path::PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| {
+        // Fallback for current_dir failure
+        if cfg!(windows) {
+            std::path::PathBuf::from("C:\\")
+        } else {
+            std::path::PathBuf::from("/tmp")
+        }
+    })
+}
+
 // pub mod integration_tests;  // Temporarily disabled for debugging
 
 #[cfg(test)]

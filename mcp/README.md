@@ -88,7 +88,7 @@ Add to `.cursor/mcp_settings.json` in your workspace:
   "mcpServers": {
     "archlens": {
       "command": "node",
-      "args": ["./mcp/archlens_mcp_server.cjs"],
+              "args": ["/absolute/path/to/your/project/mcp/archlens_mcp_server.cjs"],
       "env": {
         "ARCHLENS_DEBUG": "false"
       }

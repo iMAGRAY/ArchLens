@@ -113,8 +113,7 @@ impl ArgParser {
         
         Ok(CliCommand::Analyze {
             project_path: project_path.unwrap_or_else(|| {
-                env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                crate::get_default_project_path()
                     .to_string_lossy()
                     .to_string()
             }),
@@ -177,8 +176,7 @@ impl ArgParser {
         
         Ok(CliCommand::Export {
             project_path: project_path.unwrap_or_else(|| {
-                env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                crate::get_default_project_path()
                     .to_string_lossy()
                     .to_string()
             }),
@@ -215,8 +213,7 @@ impl ArgParser {
         
         Ok(CliCommand::Structure {
             project_path: project_path.unwrap_or_else(|| {
-                env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                crate::get_default_project_path()
                     .to_string_lossy()
                     .to_string()
             }),
@@ -268,8 +265,7 @@ impl ArgParser {
         
         Ok(CliCommand::Diagram {
             project_path: project_path.unwrap_or_else(|| {
-                env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                crate::get_default_project_path()
                     .to_string_lossy()
                     .to_string()
             }),

@@ -14,7 +14,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Define the project path to analyze
     let project_path = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .unwrap_or_else(|_| {
+            if cfg!(windows) {
+                std::path::PathBuf::from("C:\\")
+            } else {
+                std::path::PathBuf::from("/tmp")
+            }
+        })
         .to_string_lossy()
         .to_string();
     
@@ -28,7 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🔍 Running basic project analysis...");
     
     // Run basic analysis
-    let output = Command::new("./target/release/archlens")
+    let binary_path = get_archlens_binary_path();
+    let output = Command::new(&binary_path)
         .args(&["analyze", &project_path])
         .output()?;
     
@@ -44,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🏗️ Getting project structure...");
     
     // Run structure analysis
-    let structure_output = Command::new("./target/release/archlens")
+    let structure_output = Command::new(&binary_path)
         .args(&["structure", &project_path, "--show-metrics"])
         .output()?;
     
@@ -60,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🤖 Generating AI-ready export...");
     
     // Run AI compact export
-    let ai_output = Command::new("./target/release/archlens")
+    let ai_output = Command::new(&binary_path)
         .args(&["export", &project_path, "ai_compact"])
         .output()?;
     
@@ -80,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📈 Generating architecture diagram...");
     
     // Generate Mermaid diagram
-    let diagram_output = Command::new("./target/release/archlens")
+    let diagram_output = Command::new(&binary_path)
         .args(&["diagram", &project_path, "mermaid", "--include-metrics"])
         .output()?;
     
@@ -99,6 +106,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn check_archlens_binary() -> bool {
-    Path::new("./target/release/archlens").exists() || 
-    Path::new("./target/release/archlens.exe").exists()
+    let binary_path = get_archlens_binary_path();
+    Path::new(&binary_path).exists()
+}
+
+fn get_archlens_binary_path() -> String {
+    // Get absolute path to binary
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| {
+        if cfg!(windows) {
+            std::path::PathBuf::from("C:\\")
+        } else {
+            std::path::PathBuf::from("/tmp")
+        }
+    });
+    
+    let binary_name = if cfg!(windows) { "archlens.exe" } else { "archlens" };
+    let binary_path = current_dir.join("target").join("release").join(binary_name);
+    
+    binary_path.to_string_lossy().to_string()
 } 
