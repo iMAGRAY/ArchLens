@@ -20,12 +20,12 @@ const CONFIG = {
     name: process.env.ARCHLENS_BINARY || "archlens",
     searchPaths: [
       process.env.ARCHLENS_PATH,
-      path.join(process.cwd(), "target", "release"),
-      path.join(process.cwd(), "target", "debug"), 
-      path.join(__dirname, "target", "release"),
-      path.join(__dirname, "target", "debug"),
-      path.join(__dirname),
-      process.cwd()
+      path.resolve(process.cwd(), "target", "release"),
+      path.resolve(process.cwd(), "target", "debug"),
+      path.resolve(path.dirname(__filename), "target", "release"),
+      path.resolve(path.dirname(__filename), "target", "debug"),
+      path.resolve(path.dirname(__filename)),
+      path.resolve(process.cwd())
     ].filter(Boolean), // Remove undefined/null values
     timeout: 60000
   },
@@ -38,8 +38,6 @@ const CONFIG = {
   },
   windows: {
     useShell: true,
-    retryOnAccessDenied: true,
-    adminRequired: false,
     autoElevate: process.env.ARCHLENS_AUTO_ELEVATE === "true"
   },
   patterns: {
@@ -239,9 +237,12 @@ async function tryAutoElevation() {
         
   try {
     const { spawn } = require('child_process');
+    const currentScriptPath = path.resolve(__filename);
+    const workingDir = path.dirname(currentScriptPath);
+    
     const powershellArgs = [
       '-Command',
-      `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${process.cwd()}'; node mcp/archlens_mcp_server.cjs"`
+      `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${workingDir}'; node '${currentScriptPath}'"`
     ];
     
     logger.debug("Attempting automatic admin elevation...");
@@ -262,7 +263,10 @@ async function tryAutoElevation() {
 }
 
 function createAdminElevationInstructions(command, projectPath) {
-  const powershellCommand = `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${process.cwd()}'; node mcp/archlens_mcp_server.cjs"`;
+  const currentScriptPath = path.resolve(__filename);
+  const workingDir = path.dirname(currentScriptPath);
+  
+  const powershellCommand = `Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "cd '${workingDir}'; node '${currentScriptPath}'"`;
   const autoElevateInfo = CONFIG.windows.autoElevate ? 
     `**AUTO-ELEVATION:** Enabled (ARCHLENS_AUTO_ELEVATE=true)` :
     `**AUTO-ELEVATION:** Disabled (set ARCHLENS_AUTO_ELEVATE=true to enable automatic elevation)`;
@@ -283,8 +287,8 @@ ${powershellCommand}
 **MANUAL SOLUTION:**
 1. Close current session
 2. Right-click PowerShell/CMD → "Run as Administrator"  
-3. Navigate to: ${process.cwd()}
-4. Run: node mcp/archlens_mcp_server.cjs
+3. Navigate to: ${workingDir}
+4. Run: node "${currentScriptPath}"
 5. Retry the analyze_project command
 
 **ENVIRONMENT SETUP:**
@@ -627,79 +631,87 @@ async function handleAnalyzeProject(args) {
       throw new Error("project_path is required");
     }
     
-    // 🔐 CHECK ADMIN RIGHTS ON WINDOWS
-    if (os.platform() === 'win32') {
-      const hasAdminRights = await checkWindowsAdminRights();
-      
-      if (!hasAdminRights) {
-        // Try automatic elevation if enabled
-        if (CONFIG.windows.autoElevate) {
-          logger.debug("Attempting automatic admin elevation...");
-          const elevationAttempted = await tryAutoElevation();
-          
-          if (elevationAttempted) {
-    return {
-      content: [{
-        type: "text",
-                text: `🔐 ADMIN ELEVATION INITIATED
-
-**Status:** Administrator elevation request sent to Windows
-
-**Next Steps:**
-1. Approve UAC prompt if it appears
-2. New PowerShell window will open with admin rights
-3. MCP server will restart automatically
-4. Retry analyze_project command in the new admin session
-
-**If UAC was cancelled or failed:**
-${createAdminElevationInstructions('analyze', project_path)}
-
-**Current Session:** This session will continue running for other commands.`
-              }],
-              isError: false
-            };
-          }
-        }
-        
-        // Return admin elevation instructions if auto-elevation is disabled or failed
-        return {
-          content: [{
-            type: "text",
-            text: createAdminElevationInstructions('analyze', project_path)
-          }],
-          isError: false
-    };
-      }
-      
-      logger.debug("Windows admin rights confirmed - proceeding with analysis");
-    }
-    
     const resolvedPath = resolveProjectPath(project_path);
-    const result = await executeArchlensCommand('analyze', resolvedPath);
     
+    // 🚀 DIRECT EXECUTION: Let Rust binary handle access errors gracefully
+    logger.debug("Attempting direct binary execution - Rust handles access errors gracefully");
+    
+    // 🔐 SMART MODE: TRY NORMAL EXECUTION FIRST, CHECK ADMIN ONLY IF NEEDED
+    // Rust binary gracefully handles access denied errors, so we don't need admin precheck
+    
+    const result = await executeArchlensCommand('analyze', resolvedPath);
     return createMCPResponse('analyze_project', result, null, resolvedPath);
     
   } catch (error) {
-    // Enhanced Windows error handling
+    // Smart error handling: most access errors are handled gracefully by Rust binary
+    // Only suggest admin elevation if there's a genuine system-level access issue
     if (os.platform() === 'win32' && 
         (error.message.includes('Access denied') || 
          error.message.includes('os error 5') ||
-         error.message.includes('Отказано в доступе'))) {
+         error.message.includes('Отказано в доступе')) &&
+        error.message.includes('permission')) {  // Only for actual permission errors
       
-    return {
-      content: [{
-        type: "text",
-          text: `❌ WINDOWS ACCESS DENIED
+      logger.debug("Genuine permission error detected - suggesting admin elevation");
+      
+      return {
+        content: [{
+          type: "text",
+          text: `⚠️ PERMISSION ERROR DETECTED
 
-${createAdminElevationInstructions('analyze', project_path)}
+**The binary encountered a genuine permission issue.**
 
-**Original Error:** ${error.message}`
-      }],
-      isError: true
-    };
-  }
+**RECOMMENDED SOLUTIONS:**
+
+**Option 1: Alternative commands (work without admin):**
+- get_project_structure - ✅ Full structure analysis
+- export_ai_compact - ✅ Complete AI analysis  
+- generate_diagram - ✅ Architecture diagrams
+
+**Option 2: Admin elevation (only if needed):**
+1. Right-click PowerShell → "Run as Administrator"
+2. cd "${path.dirname(path.resolve(__filename))}"
+3. node "${path.resolve(__filename)}"
+
+**Note:** Most projects work fine without admin rights. Try Option 1 first!
+
+**Error details:** ${error.message}`
+        }],
+        isError: false
+      };
+    }
     
+    // For non-permission errors, return standard error response
     return createMCPResponse('analyze_project', null, error, project_path);
+  }
+}
+
+// 🔧 LIMITED ANALYSIS FALLBACK (No admin rights needed)
+async function createLimitedAnalysis(projectPath) {
+  logger.debug(`Creating limited analysis for: ${projectPath}`);
+  
+  try {
+    // Use manual structure scan which doesn't need admin rights
+    const structureResult = createManualStructure(projectPath);
+    const structure = structureResult.structure;
+    
+    return {
+      status: "success",
+      method: "limited_analysis",
+      total_files: structure.total_files,
+      total_lines: structure.total_lines,
+      file_types: structure.file_types,
+      layers: structure.layers,
+      project_path: projectPath,
+      analysis_date: new Date().toISOString(),
+      limitations: [
+        "Limited analysis mode (no admin rights)",
+        "Some system files may be inaccessible",
+        "Use export_ai_compact for detailed analysis"
+      ],
+      recommendation: "For full analysis, use 'export_ai_compact' and 'get_project_structure' commands"
+    };
+  } catch (error) {
+    throw new Error(`Limited analysis failed: ${error.message}`);
   }
 }
 

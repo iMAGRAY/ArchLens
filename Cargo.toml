@@ -1,9 +1,27 @@
 [package]
 name = "archlens"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-description = "ArchLens - Интеллектуальный анализатор архитектуры кода"
+description = "Advanced architecture analysis tool with AI-powered insights for code quality, SOLID principles, and technical debt assessment"
 license = "MIT"
+authors = ["ArchLens Contributors"]
+repository = "https://github.com/yourusername/archlens"
+homepage = "https://github.com/yourusername/archlens"
+documentation = "https://github.com/yourusername/archlens/wiki"
+readme = "README.md"
+keywords = ["architecture", "analysis", "code-quality", "ai", "mcp"]
+categories = ["development-tools", "command-line-utilities"]
+exclude = [
+    "target/",
+    "mcp/node_modules/",
+    "*.log",
+    "temp_*",
+    "test_*"
+]
+
+[[bin]]
+name = "archlens"
+path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -37,3 +55,11 @@ tokio = { version = "1.0", features = ["full"] }
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
