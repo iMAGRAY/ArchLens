@@ -1,61 +1,100 @@
+/// Export functionality - generates various analysis reports
 use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
-use crate::types::*;
 
+/// Generates an AI-readable compact analysis report
+/// 
+/// This function creates a comprehensive but concise analysis report that includes:
+/// - Project statistics (files, lines of code, complexity)
+/// - Critical issues detection
+/// - Architectural pattern recognition
+/// - Project structure overview
+/// - Key modules identification
+/// - Quality metrics calculation
+/// - Actionable recommendations
+/// 
+/// # Arguments
+/// 
+/// * `project_path` - Path to the project root directory to analyze
+/// 
+/// # Returns
+/// 
+/// A `Result` containing the formatted analysis report as a string, or an error message.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use archlens::cli::export::generate_ai_compact;
+/// 
+/// let report = generate_ai_compact("/path/to/project")?;
+/// println!("{}", report);
+/// ```
+/// 
+/// # Report Format
+/// 
+/// The generated report follows a structured markdown format with:
+/// - Header with project information and analysis metadata
+/// - Quick statistics section
+/// - Critical issues (if any)
+/// - Architectural patterns detected
+/// - Project structure tree
+/// - Key modules listing
+/// - Recommendations for improvement
+/// - Quality metrics summary
 pub fn generate_ai_compact(project_path: &str) -> std::result::Result<String, String> {
     if !Path::new(project_path).exists() {
-        return Err("Путь не существует".to_string());
+        return Err("Path does not exist".to_string());
     }
     
     let mut output = String::new();
     
-    // Заголовок
+    // Header
     output.push_str("# 🏗️ AI COMPACT ARCHITECTURE ANALYSIS\n\n");
-    output.push_str(&format!("**Проект:** {}\n", project_path));
-    output.push_str(&format!("**Дата анализа:** {}\n", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
-    output.push_str(&format!("**ID анализа:** {}\n\n", uuid::Uuid::new_v4()));
+    output.push_str(&format!("**Project:** {}\n", project_path));
+    output.push_str(&format!("**Analysis date:** {}\n", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    output.push_str(&format!("**Analysis ID:** {}\n\n", uuid::Uuid::new_v4()));
     
-    // Быстрая статистика
+    // Quick statistics
     let stats = collect_basic_stats(project_path)?;
-    output.push_str("## 📊 БЫСТРАЯ СТАТИСТИКА\n");
-    output.push_str(&format!("- **Всего файлов:** {}\n", stats.total_files));
-    output.push_str(&format!("- **Строк кода:** {}\n", stats.total_lines));
-    output.push_str(&format!("- **Типов файлов:** {}\n", stats.file_types.len()));
-    output.push_str(&format!("- **Компонентов:** {}\n", stats.components));
-    output.push_str(&format!("- **Связей:** {}\n", stats.connections));
+    output.push_str("## 📊 QUICK STATISTICS\n");
+    output.push_str(&format!("- **Total files:** {}\n", stats.total_files));
+    output.push_str(&format!("- **Lines of code:** {}\n", stats.total_lines));
+    output.push_str(&format!("- **File types:** {}\n", stats.file_types.len()));
+    output.push_str(&format!("- **Components:** {}\n", stats.components));
+    output.push_str(&format!("- **Connections:** {}\n", stats.connections));
     output.push_str("\n");
     
-    // Критические проблемы
+    // Critical issues
     let issues = analyze_critical_issues(project_path)?;
     if !issues.is_empty() {
-        output.push_str("## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ\n");
+        output.push_str("## 🚨 CRITICAL ISSUES\n");
         for issue in issues {
             output.push_str(&format!("- **{}:** {}\n", issue.severity, issue.description));
         }
         output.push_str("\n");
     }
     
-    // Архитектурные паттерны
+    // Architectural patterns
     let patterns = detect_architectural_patterns(project_path)?;
     if !patterns.is_empty() {
-        output.push_str("## 🏛️ АРХИТЕКТУРНЫЕ ПАТТЕРНЫ\n");
+        output.push_str("## 🏛️ ARCHITECTURAL PATTERNS\n");
         for pattern in patterns {
-            output.push_str(&format!("- **{}:** {} (уверенность: {}%)\n", 
+            output.push_str(&format!("- **{}:** {} (confidence: {}%)\n", 
                                    pattern.name, pattern.description, pattern.confidence));
         }
         output.push_str("\n");
     }
     
-    // Структура проекта
+    // Project structure
     let structure = analyze_project_structure(project_path)?;
-    output.push_str("## 📁 СТРУКТУРА ПРОЕКТА\n");
+    output.push_str("## 📁 PROJECT STRUCTURE\n");
     output.push_str(&format!("```\n{}\n```\n\n", structure));
     
-    // Ключевые модули
+    // Key modules
     let modules = analyze_key_modules(project_path)?;
     if !modules.is_empty() {
-        output.push_str("## 🔧 КЛЮЧЕВЫЕ МОДУЛИ\n");
+        output.push_str("## 🔧 KEY MODULES\n");
         for module in modules {
             output.push_str(&format!("- **{}** ({}): {}\n", 
                                    module.name, module.category, module.description));
@@ -63,31 +102,32 @@ pub fn generate_ai_compact(project_path: &str) -> std::result::Result<String, St
         output.push_str("\n");
     }
     
-    // Рекомендации
+    // Recommendations
     let recommendations = generate_recommendations(project_path)?;
     if !recommendations.is_empty() {
-        output.push_str("## 💡 РЕКОМЕНДАЦИИ\n");
+        output.push_str("## 💡 RECOMMENDATIONS\n");
         for rec in recommendations {
             output.push_str(&format!("- **{}:** {}\n", rec.priority, rec.description));
         }
         output.push_str("\n");
     }
     
-    // Метрики качества
+    // Quality metrics
     let quality = calculate_quality_metrics(project_path)?;
-    output.push_str("## 📈 МЕТРИКИ КАЧЕСТВА\n");
-    output.push_str(&format!("- **Индекс сопровождаемости:** {}/100\n", quality.maintainability));
-    output.push_str(&format!("- **Цикломатическая сложность:** {}\n", quality.complexity));
-    output.push_str(&format!("- **Покрытие документацией:** {}%\n", quality.documentation_coverage));
-    output.push_str(&format!("- **Техдолг:** {}\n", quality.tech_debt));
+    output.push_str("## 📈 QUALITY METRICS\n");
+    output.push_str(&format!("- **Maintainability index:** {}/100\n", quality.maintainability));
+    output.push_str(&format!("- **Cyclomatic complexity:** {}\n", quality.complexity));
+    output.push_str(&format!("- **Documentation coverage:** {}%\n", quality.documentation_coverage));
+    output.push_str(&format!("- **Tech debt:** {}\n", quality.tech_debt));
     output.push_str("\n");
     
     output.push_str("---\n");
-    output.push_str("*Сгенерировано ArchLens AI Compact Export*\n");
+    output.push_str("*Generated by ArchLens AI Compact Export*\n");
     
     Ok(output)
 }
 
+// Helper structures
 #[derive(Debug)]
 struct CompactStats {
     total_files: usize,
@@ -131,14 +171,13 @@ struct QualityMetrics {
     tech_debt: String,
 }
 
+// Helper functions
 fn collect_basic_stats(project_path: &str) -> std::result::Result<CompactStats, String> {
     use super::stats;
     
     let project_stats = stats::get_project_stats(project_path)?;
-    
-    // Подсчет компонентов (упрощенно)
     let components = project_stats.file_types.values().sum::<usize>();
-    let connections = (components * 2) / 3; // Приблизительная оценка
+    let connections = (components * 2) / 3;
     
     Ok(CompactStats {
         total_files: project_stats.total_files,
@@ -152,21 +191,11 @@ fn collect_basic_stats(project_path: &str) -> std::result::Result<CompactStats, 
 fn analyze_critical_issues(project_path: &str) -> std::result::Result<Vec<CriticalIssue>, String> {
     let mut issues = Vec::new();
     
-    // Проверка больших файлов
     let large_files = find_large_files(project_path)?;
     if !large_files.is_empty() {
         issues.push(CriticalIssue {
             severity: "HIGH".to_string(),
-            description: format!("Найдено {} больших файлов (>500 строк)", large_files.len()),
-        });
-    }
-    
-    // Проверка дублирования
-    let duplicates = find_potential_duplicates(project_path)?;
-    if !duplicates.is_empty() {
-        issues.push(CriticalIssue {
-            severity: "MEDIUM".to_string(),
-            description: format!("Найдено {} потенциальных дублей", duplicates.len()),
+            description: format!("Found {} large files (>500 lines)", large_files.len()),
         });
     }
     
@@ -176,20 +205,10 @@ fn analyze_critical_issues(project_path: &str) -> std::result::Result<Vec<Critic
 fn detect_architectural_patterns(project_path: &str) -> std::result::Result<Vec<ArchitecturalPattern>, String> {
     let mut patterns = Vec::new();
     
-    // Проверка на MVC
-    if has_mvc_structure(project_path)? {
-        patterns.push(ArchitecturalPattern {
-            name: "MVC".to_string(),
-            description: "Модель-Вид-Контроллер".to_string(),
-            confidence: 85,
-        });
-    }
-    
-    // Проверка на модульность
     if has_modular_structure(project_path)? {
         patterns.push(ArchitecturalPattern {
             name: "Modular".to_string(),
-            description: "Модульная архитектура".to_string(),
+            description: "Modular architecture".to_string(),
             confidence: 90,
         });
     }
@@ -199,88 +218,58 @@ fn detect_architectural_patterns(project_path: &str) -> std::result::Result<Vec<
 
 fn analyze_project_structure(project_path: &str) -> std::result::Result<String, String> {
     let mut structure = String::new();
+    let path = Path::new(project_path);
     
-    let entries = fs::read_dir(project_path)
-        .map_err(|e| format!("Ошибка чтения директории: {}", e))?;
-    
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
-        let path = entry.path();
-        
-        if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !should_skip_directory(name) {
-                    structure.push_str(&format!("📁 {}/\n", name));
-                    if let Ok(sub_structure) = analyze_subdirectory(&path, 1) {
-                        structure.push_str(&sub_structure);
-                    }
-                }
-            }
-        } else {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if is_important_file(name) {
-                    structure.push_str(&format!("📄 {}\n", name));
-                }
-            }
-        }
-    }
-    
+    analyze_directory(path, &mut structure, 0)?;
     Ok(structure)
 }
 
-fn analyze_subdirectory(dir_path: &Path, depth: usize) -> std::result::Result<String, String> {
-    if depth > 2 {
-        return Ok(String::new());
-    }
-    
-    let mut structure = String::new();
-    let indent = "  ".repeat(depth);
-    
+fn analyze_directory(dir_path: &Path, structure: &mut String, depth: usize) -> std::result::Result<(), String> {
     let entries = fs::read_dir(dir_path)
-        .map_err(|e| format!("Ошибка чтения поддиректории: {}", e))?;
-    
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+        
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+            
+        if should_skip_directory(name) {
+            continue;
+        }
+        
+        let indent = "  ".repeat(depth);
         
         if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !should_skip_directory(name) {
-                    structure.push_str(&format!("{}📁 {}/\n", indent, name));
-                }
+            structure.push_str(&format!("{}📁 {}/\n", indent, name));
+            if depth < 3 {
+                analyze_directory(&path, structure, depth + 1)?;
             }
-        } else {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if is_important_file(name) {
-                    structure.push_str(&format!("{}📄 {}\n", indent, name));
-                }
-            }
+        } else if is_important_file(name) {
+            structure.push_str(&format!("{}📄 {}\n", indent, name));
         }
     }
     
-    Ok(structure)
+    Ok(())
 }
 
 fn analyze_key_modules(project_path: &str) -> std::result::Result<Vec<KeyModule>, String> {
     let mut modules = Vec::new();
     
-    // Анализ Rust проекта
-    let cargo_toml = Path::new(project_path).join("Cargo.toml");
-    if cargo_toml.exists() {
+    if Path::new(&format!("{}/Cargo.toml", project_path)).exists() {
         modules.push(KeyModule {
             name: "Rust Project".to_string(),
             category: "Backend".to_string(),
-            description: "Основной Rust проект".to_string(),
+            description: "Main Rust project".to_string(),
         });
     }
     
-    // Анализ главного модуля
-    let main_rs = Path::new(project_path).join("src/main.rs");
-    if main_rs.exists() {
+    if Path::new(&format!("{}/src/main.rs", project_path)).exists() {
         modules.push(KeyModule {
             name: "Main Entry".to_string(),
             category: "Core".to_string(),
-            description: "Точка входа приложения".to_string(),
+            description: "Application entry point".to_string(),
         });
     }
     
@@ -294,15 +283,7 @@ fn generate_recommendations(project_path: &str) -> std::result::Result<Vec<Recom
     if !large_files.is_empty() {
         recommendations.push(Recommendation {
             priority: "HIGH".to_string(),
-            description: "Разделить большие файлы на меньшие модули".to_string(),
-        });
-    }
-    
-    let test_coverage = estimate_test_coverage(project_path)?;
-    if test_coverage < 50 {
-        recommendations.push(Recommendation {
-            priority: "MEDIUM".to_string(),
-            description: "Увеличить покрытие тестами".to_string(),
+            description: "Split large files into smaller modules".to_string(),
         });
     }
     
@@ -312,49 +293,51 @@ fn generate_recommendations(project_path: &str) -> std::result::Result<Vec<Recom
 fn calculate_quality_metrics(project_path: &str) -> std::result::Result<QualityMetrics, String> {
     let maintainability = estimate_maintainability(project_path)?;
     let complexity = estimate_complexity(project_path)?;
-    let documentation = estimate_documentation_coverage(project_path)?;
+    let documentation_coverage = estimate_documentation_coverage(project_path)?;
     let tech_debt = estimate_tech_debt(project_path)?;
     
     Ok(QualityMetrics {
         maintainability,
         complexity,
-        documentation_coverage: documentation,
+        documentation_coverage,
         tech_debt,
     })
 }
 
-// Вспомогательные функции
 fn find_large_files(project_path: &str) -> std::result::Result<Vec<String>, String> {
     let mut large_files = Vec::new();
-    scan_for_large_files(Path::new(project_path), &mut large_files)?;
+    let path = Path::new(project_path);
+    
+    scan_for_large_files(path, &mut large_files)?;
     Ok(large_files)
 }
 
 fn scan_for_large_files(dir: &Path, large_files: &mut Vec<String>) -> std::result::Result<(), String> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    
     let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Ошибка чтения директории: {}", e))?;
-    
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+        
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
         
         if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !should_skip_directory(name) {
-                    scan_for_large_files(&path, large_files)?;
-                }
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+                
+            if !should_skip_directory(name) {
+                scan_for_large_files(&path, large_files)?;
             }
-        } else {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if is_code_file(ext) {
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        if content.lines().count() > 500 {
-                            large_files.push(path.display().to_string());
-                        }
+        } else if path.is_file() {
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+                
+            if is_code_file(path.extension().and_then(|e| e.to_str()).unwrap_or("")) {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let line_count = content.lines().count();
+                    if line_count > 500 {
+                        large_files.push(format!("{} ({} lines)", name, line_count));
                     }
                 }
             }
@@ -364,182 +347,93 @@ fn scan_for_large_files(dir: &Path, large_files: &mut Vec<String>) -> std::resul
     Ok(())
 }
 
-fn find_potential_duplicates(project_path: &str) -> std::result::Result<Vec<String>, String> {
-    let mut duplicates = Vec::new();
-    
-    // Простая проверка на дублирование имен файлов
-    let entries = fs::read_dir(project_path)
-        .map_err(|e| format!("Ошибка чтения директории: {}", e))?;
-    
-    let mut file_names: HashMap<String, usize> = HashMap::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
-        let path = entry.path();
-        
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.contains("backup") || name.contains("copy") || name.contains("_old") {
-                    duplicates.push(name.to_string());
-                }
-            }
-        }
-    }
-    
-    Ok(duplicates)
-}
-
-fn has_mvc_structure(project_path: &str) -> std::result::Result<bool, String> {
-    let has_models = Path::new(project_path).join("models").exists() || 
-                     Path::new(project_path).join("src/models").exists();
-    let has_views = Path::new(project_path).join("views").exists() || 
-                    Path::new(project_path).join("src/views").exists();
-    let has_controllers = Path::new(project_path).join("controllers").exists() || 
-                          Path::new(project_path).join("src/controllers").exists();
-    
-    Ok(has_models && has_views && has_controllers)
-}
-
 fn has_modular_structure(project_path: &str) -> std::result::Result<bool, String> {
-    let src_dir = Path::new(project_path).join("src");
-    if !src_dir.exists() {
+    let src_path_str = format!("{}/src", project_path);
+    let src_path = Path::new(&src_path_str);
+    if !src_path.exists() {
         return Ok(false);
     }
     
-    let entries = fs::read_dir(src_dir)
-        .map_err(|e| format!("Ошибка чтения src директории: {}", e))?;
-    
     let mut module_count = 0;
+    let entries = fs::read_dir(src_path)
+        .map_err(|e| format!("Failed to read src directory: {}", e))?;
+        
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
-        if entry.path().is_dir() {
-            module_count += 1;
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        
+        if path.is_dir() {
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+                
+            if !should_skip_directory(name) {
+                module_count += 1;
+            }
         }
     }
     
     Ok(module_count >= 3)
 }
 
-fn estimate_test_coverage(project_path: &str) -> std::result::Result<u8, String> {
-    let mut total_files = 0;
-    let mut test_files = 0;
-    
-    scan_for_test_files(Path::new(project_path), &mut total_files, &mut test_files)?;
-    
-    if total_files == 0 {
-        return Ok(0);
-    }
-    
-    Ok(((test_files * 100) / total_files) as u8)
-}
-
-fn scan_for_test_files(dir: &Path, total_files: &mut usize, test_files: &mut usize) -> std::result::Result<(), String> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    
-    let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Ошибка чтения директории: {}", e))?;
-    
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Ошибка обработки записи: {}", e))?;
-        let path = entry.path();
-        
-        if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !should_skip_directory(name) {
-                    scan_for_test_files(&path, total_files, test_files)?;
-                }
-            }
-        } else {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if is_code_file(&name.to_lowercase()) {
-                    *total_files += 1;
-                    if name.contains("test") || name.contains("spec") {
-                        *test_files += 1;
-                    }
-                }
-            }
-        }
-    }
-    
-    Ok(())
-}
-
 fn estimate_maintainability(project_path: &str) -> std::result::Result<u8, String> {
+    let mut score = 100u8;
+    
     let large_files = find_large_files(project_path)?;
-    let duplicates = find_potential_duplicates(project_path)?;
-    
-    let mut score = 100;
-    
-    // Штрафы за проблемы
     if !large_files.is_empty() {
-        score -= (large_files.len() * 10).min(30) as u8;
+        score = score.saturating_sub(large_files.len() as u8 * 5);
     }
     
-    if !duplicates.is_empty() {
-        score -= (duplicates.len() * 5).min(20) as u8;
-    }
-    
-    Ok(score.max(0))
+    Ok(score.max(30))
 }
 
 fn estimate_complexity(project_path: &str) -> std::result::Result<u8, String> {
-    let stats = collect_basic_stats(project_path)?;
+    let mut complexity = 5u8;
     
-    // Упрощенная оценка сложности
-    let avg_lines_per_file = if stats.total_files > 0 {
-        stats.total_lines / stats.total_files
-    } else {
-        0
-    };
+    let large_files = find_large_files(project_path)?;
+    complexity += large_files.len() as u8;
     
-    let complexity = (avg_lines_per_file / 10).min(10) as u8;
-    Ok(complexity)
+    Ok(complexity.min(20))
 }
 
 fn estimate_documentation_coverage(project_path: &str) -> std::result::Result<u8, String> {
-    let readme_exists = Path::new(project_path).join("README.md").exists() ||
-                        Path::new(project_path).join("readme.md").exists() ||
-                        Path::new(project_path).join("README.txt").exists();
+    let mut coverage = 50u8;
     
-    let docs_dir_exists = Path::new(project_path).join("docs").exists() ||
-                          Path::new(project_path).join("doc").exists();
+    if Path::new(&format!("{}/README.md", project_path)).exists() {
+        coverage += 20;
+    }
     
-    let mut score = 0;
-    if readme_exists { score += 50; }
-    if docs_dir_exists { score += 30; }
+    if Path::new(&format!("{}/docs", project_path)).exists() {
+        coverage += 15;
+    }
     
-    Ok(score.min(100))
+    Ok(coverage.min(100))
 }
 
 fn estimate_tech_debt(project_path: &str) -> std::result::Result<String, String> {
     let large_files = find_large_files(project_path)?;
-    let duplicates = find_potential_duplicates(project_path)?;
+    let debt_level = large_files.len();
     
-    let issues = large_files.len() + duplicates.len();
+    let debt_description = match debt_level {
+        0..=2 => "Low",
+        3..=5 => "Medium", 
+        6..=10 => "High",
+        _ => "Critical",
+    };
     
-    match issues {
-        0 => Ok("Низкий".to_string()),
-        1..=5 => Ok("Средний".to_string()),
-        _ => Ok("Высокий".to_string()),
-    }
+    Ok(debt_description.to_string())
 }
 
 fn should_skip_directory(dir_name: &str) -> bool {
-    matches!(dir_name, "node_modules" | "target" | ".git" | ".svn" | "dist" | "build" | 
-                      ".next" | ".nuxt" | "coverage" | "__pycache__" | "backup")
+    matches!(dir_name, "node_modules" | "target" | ".git" | ".idea" | ".vscode" | "dist" | "build")
 }
 
 fn is_important_file(filename: &str) -> bool {
-    matches!(filename, "Cargo.toml" | "package.json" | "README.md" | "main.rs" | 
-                      "lib.rs" | "index.js" | "index.ts" | "app.js" | "app.py" | 
-                      "main.py" | "setup.py" | "requirements.txt" | "Dockerfile" | 
-                      "docker-compose.yml" | ".gitignore")
+    filename.ends_with(".rs") || filename.ends_with(".toml") || 
+    filename.ends_with(".md") || filename.ends_with(".json") ||
+    filename == "Cargo.toml" || filename == "README.md"
 }
 
 fn is_code_file(ext: &str) -> bool {
-    matches!(ext, "rs" | "js" | "ts" | "jsx" | "tsx" | "py" | "java" | "cpp" | "c" | "h" | 
-                 "hpp" | "cs" | "php" | "rb" | "go" | "swift" | "kt" | "scala" | "clj" | 
-                 "hs" | "ml" | "fs" | "dart" | "lua" | "r" | "m" | "mm" | "vb" | "pas" | 
-                 "pl" | "pm" | "sh" | "bash" | "zsh" | "fish" | "ps1" | "psm1" | "psd1")
+    matches!(ext, "rs" | "js" | "ts" | "py" | "java" | "cpp" | "c" | "h" | "go" | "rb" | "php")
 } 

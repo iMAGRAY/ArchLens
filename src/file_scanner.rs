@@ -236,6 +236,8 @@ impl FileScanner {
             FileType::Rust => self.extract_rust_imports_exports(content),
             FileType::TypeScript | FileType::JavaScript => self.extract_ts_js_imports_exports(content),
             FileType::Python => self.extract_python_imports_exports(content),
+            FileType::Java => self.extract_java_imports_exports(content),
+            FileType::Cpp | FileType::C => self.extract_cpp_imports_exports(content),
             _ => (Vec::new(), Vec::new()),
         }
     }
@@ -304,6 +306,65 @@ impl FileScanner {
         (imports, exports)
     }
 
+    fn extract_java_imports_exports(&self, content: &str) -> (Vec<String>, Vec<String>) {
+        let mut imports = Vec::new();
+        let mut exports = Vec::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            
+            // Java imports
+            if trimmed.starts_with("import ") && trimmed.ends_with(";") {
+                if let Some(import) = trimmed.strip_prefix("import ") {
+                    let import_clean = import.trim_end_matches(';').trim();
+                    if !import_clean.starts_with("static ") {
+                        imports.push(import_clean.to_string());
+                    }
+                }
+            }
+            
+            // Java public exports (classes, interfaces, methods)
+            if trimmed.contains("public ") {
+                if let Some(export) = extract_java_export_name(trimmed) {
+                    exports.push(export);
+                }
+            }
+        }
+
+        (imports, exports)
+    }
+
+    fn extract_cpp_imports_exports(&self, content: &str) -> (Vec<String>, Vec<String>) {
+        let mut imports = Vec::new();
+        let mut exports = Vec::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            
+            // C++ includes
+            if trimmed.starts_with("#include ") {
+                if let Some(include) = trimmed.strip_prefix("#include ") {
+                    let include_clean = include.trim()
+                        .trim_start_matches('<')
+                        .trim_end_matches('>')
+                        .trim_start_matches('"')
+                        .trim_end_matches('"');
+                    imports.push(include_clean.to_string());
+                }
+            }
+            
+            // C++ exports (classes, functions, namespaces)
+            if trimmed.contains("class ") || trimmed.contains("struct ") || 
+               trimmed.contains("namespace ") || trimmed.contains("extern ") {
+                if let Some(export) = extract_cpp_export_name(trimmed) {
+                    exports.push(export);
+                }
+            }
+        }
+
+        (imports, exports)
+    }
+
     /// Проверяет, должен ли файл быть включен в анализ
     fn should_include_file(&self, metadata: &FileMetadata) -> bool {
         let path_str = metadata.path.to_string_lossy();
@@ -320,7 +381,7 @@ impl FileScanner {
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        let supported_extensions = ["rs", "js", "ts", "tsx", "jsx", "py"];
+        let supported_extensions = ["rs", "js", "ts", "tsx", "jsx", "py", "java", "cpp", "cc", "cxx", "c", "h", "hpp", "hxx"];
         let extension_match = supported_extensions.contains(&file_extension);
 
         // Если есть include patterns, проверяем их
@@ -453,4 +514,65 @@ fn extract_name_after(line: &str, prefix: &str) -> Option<String> {
     } else {
         None
     }
-} 
+}
+
+/// Извлекает имя экспорта из Java строки
+fn extract_java_export_name(line: &str) -> Option<String> {
+    if line.contains("public class ") {
+        extract_name_after(line, "public class ")
+    } else if line.contains("public interface ") {
+        extract_name_after(line, "public interface ")
+    } else if line.contains("public enum ") {
+        extract_name_after(line, "public enum ")
+    } else if line.contains("public static ") && line.contains("(") {
+        // Public static methods
+        if let Some(start) = line.find("public static") {
+            let after_static = &line[start..];
+            if let Some(method_start) = after_static.rfind(' ') {
+                let method_part = &after_static[method_start + 1..];
+                if let Some(paren_pos) = method_part.find('(') {
+                    return Some(method_part[..paren_pos].trim().to_string());
+                }
+            }
+        }
+        None
+    } else if line.contains("public ") && line.contains("(") {
+        // Public methods
+        if let Some(paren_pos) = line.find('(') {
+            let before_paren = &line[..paren_pos];
+            if let Some(method_start) = before_paren.rfind(' ') {
+                return Some(before_paren[method_start + 1..].trim().to_string());
+            }
+        }
+        None
+    } else {
+        None
+    }
+}
+
+/// Извлекает имя экспорта из C++ строки
+fn extract_cpp_export_name(line: &str) -> Option<String> {
+    if line.contains("class ") {
+        extract_name_after(line, "class ")
+    } else if line.contains("struct ") {
+        extract_name_after(line, "struct ")
+    } else if line.contains("namespace ") {
+        extract_name_after(line, "namespace ")
+    } else if line.contains("extern ") {
+        if line.contains("extern \"C\"") {
+            // extern "C" functions
+            if let Some(start) = line.find("extern \"C\"") {
+                let after_extern = &line[start + 10..].trim();
+                if let Some(paren_pos) = after_extern.find('(') {
+                    let before_paren = &after_extern[..paren_pos];
+                    if let Some(func_start) = before_paren.rfind(' ') {
+                        return Some(before_paren[func_start + 1..].trim().to_string());
+                    }
+                }
+            }
+        }
+        None
+    } else {
+        None
+    }
+}

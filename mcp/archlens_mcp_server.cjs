@@ -43,16 +43,16 @@ const CONFIG = {
   patterns: {
     include: [
       "**/*.rs", "**/*.ts", "**/*.js", "**/*.py", "**/*.java", 
-      "**/*.cpp", "**/*.c", "**/*.go", "**/*.php", "**/*.rb", 
-      "**/*.cs", "**/*.kt", "**/*.swift", "**/*.dart", "**/*.vue", 
-      "**/*.jsx", "**/*.tsx", "**/*.html", "**/*.css", "**/*.scss", 
-      "**/*.sass", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml", 
+      "**/*.cpp", "**/*.cc", "**/*.cxx", "**/*.c", "**/*.h", "**/*.hpp", "**/*.hxx",
+      "**/*.go", "**/*.php", "**/*.rb", "**/*.cs", "**/*.kt", "**/*.swift", 
+      "**/*.dart", "**/*.vue", "**/*.jsx", "**/*.tsx", "**/*.html", "**/*.css", 
+      "**/*.scss", "**/*.sass", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml", 
       "**/*.md", "**/*.txt"
     ],
     exclude: [
       "**/target/**", "**/node_modules/**", "**/.git/**", "**/dist/**", 
-      "**/build/**", "**/.next/**", "**/.nuxt/**", "**/coverage/**", 
-      "**/tmp/**", "**/temp/**"
+      "**/build/**", "**/out/**", "**/.next/**", "**/.nuxt/**", "**/coverage/**", 
+      "**/tmp/**", "**/temp/**", "**/*.class", "**/*.o", "**/*.obj"
     ]
   },
   limits: {
@@ -62,10 +62,10 @@ const CONFIG = {
     maxFileSize: 1000000
   },
   textExtensions: [
-    '.rs', '.ts', '.js', '.py', '.java', '.cpp', '.c', '.go', '.php', 
-    '.rb', '.cs', '.kt', '.swift', '.dart', '.vue', '.jsx', '.tsx', 
-    '.html', '.css', '.scss', '.sass', '.json', '.yaml', '.yml', 
-    '.xml', '.md', '.txt'
+    '.rs', '.ts', '.js', '.py', '.java', '.cpp', '.cc', '.cxx', '.c', 
+    '.h', '.hpp', '.hxx', '.go', '.php', '.rb', '.cs', '.kt', '.swift', 
+    '.dart', '.vue', '.jsx', '.tsx', '.html', '.css', '.scss', '.sass', 
+    '.json', '.yaml', '.yml', '.xml', '.md', '.txt'
   ]
 };
 

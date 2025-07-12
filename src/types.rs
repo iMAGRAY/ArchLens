@@ -210,8 +210,28 @@ impl Default for AnalysisConfig {
     fn default() -> Self {
         AnalysisConfig {
             project_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string()],
-            exclude_patterns: vec!["**/target/**".to_string(), "**/node_modules/**".to_string()],
+            include_patterns: vec![
+                "**/*.rs".to_string(), 
+                "**/*.ts".to_string(), 
+                "**/*.js".to_string(),
+                "**/*.java".to_string(),
+                "**/*.cpp".to_string(),
+                "**/*.cc".to_string(),
+                "**/*.cxx".to_string(),
+                "**/*.c".to_string(),
+                "**/*.h".to_string(),
+                "**/*.hpp".to_string(),
+                "**/*.hxx".to_string(),
+            ],
+            exclude_patterns: vec![
+                "**/target/**".to_string(), 
+                "**/node_modules/**".to_string(),
+                "**/build/**".to_string(),
+                "**/out/**".to_string(),
+                "**/*.class".to_string(),
+                "**/*.o".to_string(),
+                "**/*.obj".to_string(),
+            ],
             max_depth: Some(10),
             follow_symlinks: false,
             analyze_dependencies: true,
@@ -219,7 +239,14 @@ impl Default for AnalysisConfig {
             parse_tests: false,
             experimental_features: false,
             generate_summaries: true,
-            languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript],
+            languages: vec![
+                FileType::Rust, 
+                FileType::TypeScript, 
+                FileType::JavaScript,
+                FileType::Java,
+                FileType::Cpp,
+                FileType::C,
+            ],
         }
     }
 }
