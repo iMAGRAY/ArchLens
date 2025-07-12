@@ -246,7 +246,7 @@ archlens/
 
 <div align="center">
 
-**Made with ♥ by the ArchLens Team**
+**Made with ♥ by the iMAGRAY**
 
 [★ Star us on GitHub](https://github.com/yourusername/archlens) • 
 [◉ Report Issues](https://github.com/yourusername/archlens/issues) • 
