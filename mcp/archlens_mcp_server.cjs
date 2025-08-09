@@ -9,6 +9,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const iconv = require('iconv-lite');
 
 // 📋 CONFIGURATION WITHOUT HARDCODING
 const CONFIG = {
@@ -102,6 +103,26 @@ function getArchLensBinary() {
   const extension = platform === 'win32' ? '.exe' : '';
   const binaryName = `${CONFIG.binary.name}${extension}`;
   
+  // First, check in the same directory as this script
+  // Use __dirname for CommonJS modules or resolve from current file
+  const scriptDir = __dirname || path.dirname(__filename) || path.resolve('.');
+  const localBinary = path.join(scriptDir, binaryName);
+  if (fs.existsSync(localBinary)) {
+    try {
+      // On Windows, just check if file exists (X_OK doesn't work well on Windows)
+      if (platform === 'win32') {
+        logger.debug(`Found local binary: ${localBinary}`);
+        return localBinary;
+      } else {
+        fs.accessSync(localBinary, fs.constants.F_OK | fs.constants.X_OK);
+        logger.debug(`Found executable binary: ${localBinary}`);
+        return localBinary;
+      }
+    } catch (accessError) {
+      logger.debug(`Binary found but not executable: ${localBinary}`);
+    }
+  }
+  
   // 1. Check if it's in PATH
   try {
     const which = platform === 'win32' ? 'where' : 'which';
@@ -120,9 +141,15 @@ function getArchLensBinary() {
     const fullPath = path.join(searchPath, binaryName);
     if (fs.existsSync(fullPath)) {
       try {
-        fs.accessSync(fullPath, fs.constants.F_OK | fs.constants.X_OK);
-        logger.debug(`Found executable binary: ${fullPath}`);
-        return fullPath;
+        // On Windows, just check if file exists
+        if (platform === 'win32') {
+          logger.debug(`Found binary: ${fullPath}`);
+          return fullPath;
+        } else {
+          fs.accessSync(fullPath, fs.constants.F_OK | fs.constants.X_OK);
+          logger.debug(`Found executable binary: ${fullPath}`);
+          return fullPath;
+        }
       } catch (accessError) {
         logger.debug(`Binary found but not executable: ${fullPath}`);
       }
@@ -325,14 +352,21 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
   return new Promise((resolve, reject) => {
       const binary = getArchLensBinary();
     
-    // Ensure project path is absolute before passing to binary
-    const absoluteProjectPath = path.isAbsolute(projectPath) ? projectPath : path.resolve(projectPath);
+    // Ensure project path is absolute and properly formatted for Windows
+    let absoluteProjectPath = path.isAbsolute(projectPath) ? projectPath : path.resolve(projectPath);
+    
+    // On Windows, ensure we use proper format with quotes if path contains spaces
+    if (os.platform() === 'win32') {
+      // Normalize slashes for consistency
+      absoluteProjectPath = absoluteProjectPath.replace(/\//g, '\\');
+    }
+    
     const args = [subcommand, absoluteProjectPath, ...additionalArgs];
     
     const spawnOptions = {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: CONFIG.paths.workingDirectory,
-      encoding: 'utf8',
+      encoding: 'buffer', // Use buffer to handle encoding ourselves
       timeout: CONFIG.binary.timeout,
       env: {
         ...process.env,
@@ -363,11 +397,54 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
     }, CONFIG.binary.timeout);
       
       child.stdout.on('data', (data) => {
-      stdout += data.toString('utf8');
+      // Handle Windows encoding properly
+      let str;
+      try {
+        if (os.platform() === 'win32') {
+          // Try to decode as UTF-8 first (archlens should output UTF-8)
+          str = data.toString('utf8');
+        } else {
+          str = data.toString('utf8');
+        }
+      } catch (e) {
+        str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '');
+      }
+      stdout += str;
       });
       
       child.stderr.on('data', (data) => {
-      stderr += data.toString('utf8');
+      // Handle Windows encoding properly - convert from cp866/cp1251 to UTF-8
+      let str;
+      try {
+        // For Windows, try multiple encodings
+        if (os.platform() === 'win32') {
+          // Try UTF-8 first (modern Windows)
+          try {
+            str = data.toString('utf8');
+            // Check if it's valid UTF-8 by looking for replacement chars
+            if (!str.includes('�')) {
+              // Valid UTF-8, use it
+            } else {
+              // Try cp866 (Russian DOS encoding)
+              str = iconv.decode(data, 'cp866');
+            }
+          } catch (e1) {
+            try {
+              // Try cp1251 (Russian Windows encoding)
+              str = iconv.decode(data, 'cp1251');
+            } catch (e2) {
+              // Last resort - use UTF-8 and replace invalid chars
+              str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '?');
+            }
+          }
+        } else {
+          str = data.toString('utf8');
+        }
+      } catch (e) {
+        // Fallback to UTF-8 with replacement characters
+        str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '?');
+      }
+      stderr += str;
       });
       
       child.on('close', (code) => {
@@ -450,7 +527,7 @@ function createMCPResponse(toolName, result, error = null, projectPath = null) {
 
 Failed to ${getToolAction(toolName)}: ${projectPath || 'unknown path'}
 
-**Reason:** ${error.message}
+**Reason:** ${error.message.replace(/[^\x00-\x7F]/g, '?')}
 
 **Project path:** ${projectPath || 'n/a'}
 **Error time:** ${new Date().toLocaleString('en-US')}
