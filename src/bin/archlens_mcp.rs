@@ -1687,11 +1687,11 @@ fn handle_call(
                 "serverInfo": {"name": "archlens-mcp", "version": env!("CARGO_PKG_VERSION")},
                 "rootUri": null,
                 "instructions": "ArchLens MCP server is ready.",
-                // Minimal capabilities object; clients will follow-up with tools/resources/prompts calls
+                // Explicit MCP-style capabilities so clients re-fetch lists
                 "capabilities": {
-                    "tools": {},
-                    "resources": {},
-                    "prompts": {}
+                    "tools": { "listChanged": true },
+                    "resources": { "listChanged": true },
+                    "prompts": { "listChanged": true }
                 }
             }))
         }
