@@ -156,6 +156,23 @@ pub struct ToolDescription {
     pub schema_uri: Option<String>,
 }
 
+// Helper: accept both underscore and dotted tool names; normalize to dotted for internal matching
+fn normalize_tool_name(name: &str) -> String {
+    match name {
+        // underscore aliases -> dotted canonical
+        "arch_refresh" => "arch.refresh",
+        "graph_build" => "graph.build",
+        "export_ai_compact" => "export.ai_compact",
+        "export_ai_summary_json" => "export.ai_summary_json",
+        "structure_get" => "structure.get",
+        "analyze_project" => "analyze.project",
+        "ai_recommend" => "ai.recommend",
+        // already dotted or unknown -> pass-through
+        _ => name,
+    }
+    .to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceDescription {
@@ -240,9 +257,15 @@ async fn http_tools_call(
     if name.is_empty() {
         return Err(axum::http::StatusCode::BAD_REQUEST);
     }
+    let normalized = normalize_tool_name(&name);
     let is_heavy = matches!(
-        name.as_str(),
-        "export.ai_compact" | "structure.get" | "graph.build" | "analyze.project"
+        normalized.as_str(),
+        "export.ai_compact"
+            | "export.ai_summary_json"
+            | "structure.get"
+            | "graph.build"
+            | "analyze.project"
+            | "ai.recommend"
     );
     if is_heavy {
         let timeout = Duration::from_millis(env_timeout_ms());
@@ -960,43 +983,43 @@ fn tool_list_schema() -> Vec<ToolDescription> {
 
     vec![
         ToolDescription {
-            name: "arch.refresh".into(),
+            name: "arch_refresh".into(),
             description: "Refresh analysis context (noop placeholder)".into(),
             input_schema: serde_json::json!({"type":"object"}),
             schema_uri: None,
         },
         ToolDescription {
-            name: "graph.build".into(),
+            name: "graph_build".into(),
             description: "Build architecture diagram (mermaid)".into(),
             input_schema: serde_json::to_value(diagram_schema.schema).unwrap(),
             schema_uri: to_uri("diagram_args"),
         },
         ToolDescription {
-            name: "export.ai_compact".into(),
+            name: "export_ai_compact".into(),
             description: "Export AI compact analysis".into(),
             input_schema: serde_json::to_value(export_schema.schema).unwrap(),
             schema_uri: to_uri("export_args"),
         },
         ToolDescription {
-            name: "export.ai_summary_json".into(),
+            name: "export_ai_summary_json".into(),
             description: "Export minimal structured JSON summary for AI (facts only).".into(),
             input_schema: serde_json::to_value(ai_summary_schema.schema).unwrap(),
             schema_uri: to_uri("ai_summary_args"),
         },
         ToolDescription {
-            name: "structure.get".into(),
+            name: "structure_get".into(),
             description: "Get project structure".into(),
             input_schema: serde_json::to_value(structure_schema.schema).unwrap(),
             schema_uri: to_uri("structure_args"),
         },
         ToolDescription {
-            name: "analyze.project".into(),
+            name: "analyze_project".into(),
             description: "Analyze project (shallow or deep)".into(),
             input_schema: serde_json::to_value(analyze_schema.schema).unwrap(),
             schema_uri: to_uri("analyze_args"),
         },
         ToolDescription {
-            name: "ai.recommend".into(),
+            name: "ai_recommend".into(),
             description: "Suggest next best MCP calls based on ai_summary_json.".into(),
             input_schema: serde_json::to_value(ai_recommend_schema.schema).unwrap(),
             schema_uri: to_uri("ai_recommend_args"),
@@ -1724,15 +1747,16 @@ fn handle_call(
         }
         "tools/call" => {
             let obj = params.ok_or("missing params")?;
-            let name = obj
+            let name_raw = obj
                 .get("name")
                 .and_then(|v| v.as_str())
                 .ok_or("missing name")?;
+            let name = normalize_tool_name(name_raw);
             let args = obj
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
-            match name {
+            match name.as_str() {
                 "export.ai_compact" => {
                     let args: ExportArgs =
                         serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -2025,12 +2049,15 @@ async fn main() -> anyhow::Result<()> {
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
                             if let Some(tool_name) = name_opt {
+                                let normalized = normalize_tool_name(&tool_name);
                                 let is_heavy = matches!(
-                                    tool_name.as_str(),
+                                    normalized.as_str(),
                                     "export.ai_compact"
+                                        | "export.ai_summary_json"
                                         | "structure.get"
                                         | "graph.build"
                                         | "analyze.project"
+                                        | "ai.recommend"
                                 );
                                 if is_heavy {
                                     handled_with_timeout = true;
@@ -2089,23 +2116,14 @@ async fn main() -> anyhow::Result<()> {
                             let id = id_opt.clone().unwrap_or(serde_json::json!(null));
                             match res {
                                 Ok(val) => write_json_line(id, Some(val), None),
-                                Err(msg) => write_json_line(
-                                    id,
-                                    Option::<serde_json::Value>::None,
-                                    Some(RpcError { code: -32603, message: msg }),
-                                ),
+                                Err(msg) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError { code: -32603, message: msg })),
                             }
                         }
                     }
                 }
-                Err(e) => write_json_line(
-                    serde_json::json!(null),
-                    Option::<serde_json::Value>::None,
-                    Some(RpcError {
-                        code: -32700,
-                        message: e.to_string(),
-                    }),
-                ),
+                Err(_e) => {
+                    write_json_line(serde_json::json!(null), Option::<serde_json::Value>::None, Some(RpcError { code: -32700, message: "parse error".into() }));
+                }
             }
         }
     });
