@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::collections::HashMap;
 use crate::types::{FileType, Result};
 use regex::Regex;
+use std::collections::HashMap;
+use std::path::Path;
 
 // Продвинутый парсер с комбинированным подходом: tree-sitter + regex fallback
 // Обеспечивает высокое качество анализа с максимальной совместимостью
@@ -47,7 +47,7 @@ pub enum ASTElementType {
 /// Продвинутый парсер AST с поддержкой множественных стратегий
 #[derive(Debug)]
 pub struct ParserAST {
-    // Паттерны для различных языков
+    // Паттерны для различных языков (regex путь)
     rust_patterns: LanguagePatterns,
     js_patterns: LanguagePatterns,
     ts_patterns: LanguagePatterns,
@@ -55,7 +55,7 @@ pub struct ParserAST {
     java_patterns: LanguagePatterns,
     cpp_patterns: LanguagePatterns,
     go_patterns: LanguagePatterns,
-    
+
     // Кеш для оптимизации
     pattern_cache: HashMap<String, Vec<ASTElement>>,
 }
@@ -90,17 +90,21 @@ impl ParserAST {
             pattern_cache: HashMap::new(),
         })
     }
-    
+
     fn create_rust_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
-            functions: Regex::new(r"(?m)^[\s]*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)\s*(?:->\s*[^{]+)?\s*\{")?,
+            functions: Regex::new(
+                r"(?m)^[\s]*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)\s*(?:->\s*[^{]+)?\s*\{",
+            )?,
             classes: Regex::new(r"(?m)^[\s]*(?:pub\s+)?(?:struct|enum|union)\s+(\w+)")?,
             structs: Regex::new(r"(?m)^[\s]*(?:pub\s+)?struct\s+(\w+)")?,
             enums: Regex::new(r"(?m)^[\s]*(?:pub\s+)?enum\s+(\w+)")?,
             interfaces: Regex::new(r"(?m)^[\s]*(?:pub\s+)?trait\s+(\w+)")?,
             modules: Regex::new(r"(?m)^[\s]*(?:pub\s+)?mod\s+(\w+)")?,
             imports: Regex::new(r"(?m)^[\s]*use\s+([^;]+);")?,
-            exports: Regex::new(r"(?m)^[\s]*pub\s+(?:fn|struct|enum|trait|mod|const|static)\s+(\w+)")?,
+            exports: Regex::new(
+                r"(?m)^[\s]*pub\s+(?:fn|struct|enum|trait|mod|const|static)\s+(\w+)",
+            )?,
             variables: Regex::new(r"(?m)^[\s]*(?:pub\s+)?(?:let|const|static)\s+(?:mut\s+)?(\w+)")?,
             constants: Regex::new(r"(?m)^[\s]*(?:pub\s+)?const\s+(\w+)")?,
             comments: Regex::new(r"(?m)^[\s]*(?://|/\*|\*|///).*")?,
@@ -116,17 +120,21 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_js_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
-            functions: Regex::new(r"(?m)^[\s]*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>")?,
+            functions: Regex::new(
+                r"(?m)^[\s]*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>",
+            )?,
             classes: Regex::new(r"(?m)^[\s]*(?:export\s+)?class\s+(\w+)")?,
             structs: Regex::new(r"(?m)^[\s]*(?:export\s+)?interface\s+(\w+)")?,
             enums: Regex::new(r"(?m)^[\s]*(?:export\s+)?enum\s+(\w+)")?,
             interfaces: Regex::new(r"(?m)^[\s]*(?:export\s+)?interface\s+(\w+)")?,
             modules: Regex::new(r"(?m)^[\s]*(?:export\s+)?namespace\s+(\w+)")?,
             imports: Regex::new(r#"(?m)^[\s]*import\s+[^from]*from\s+['"]([^'"]+)['"]"#)?,
-            exports: Regex::new(r"(?m)^[\s]*export\s+(?:default\s+)?(?:function|class|const|let|var)\s+(\w+)")?,
+            exports: Regex::new(
+                r"(?m)^[\s]*export\s+(?:default\s+)?(?:function|class|const|let|var)\s+(\w+)",
+            )?,
             variables: Regex::new(r"(?m)^[\s]*(?:export\s+)?(?:const|let|var)\s+(\w+)")?,
             constants: Regex::new(r"(?m)^[\s]*(?:export\s+)?const\s+(\w+)")?,
             comments: Regex::new(r"(?m)^[\s]*(?://|/\*|\*)")?,
@@ -145,17 +153,21 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_ts_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
-            functions: Regex::new(r"(?m)^[\s]*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>")?,
+            functions: Regex::new(
+                r"(?m)^[\s]*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>",
+            )?,
             classes: Regex::new(r"(?m)^[\s]*(?:export\s+)?class\s+(\w+)")?,
             structs: Regex::new(r"(?m)^[\s]*(?:export\s+)?type\s+(\w+)\s*=")?,
             enums: Regex::new(r"(?m)^[\s]*(?:export\s+)?enum\s+(\w+)")?,
             interfaces: Regex::new(r"(?m)^[\s]*(?:export\s+)?interface\s+(\w+)")?,
             modules: Regex::new(r"(?m)^[\s]*(?:export\s+)?namespace\s+(\w+)")?,
             imports: Regex::new(r#"(?m)^[\s]*import\s+[^from]*from\s+['"]([^'"]+)['"]"#)?,
-            exports: Regex::new(r"(?m)^[\s]*export\s+(?:default\s+)?(?:function|class|const|let|var|interface|type|enum)\s+(\w+)")?,
+            exports: Regex::new(
+                r"(?m)^[\s]*export\s+(?:default\s+)?(?:function|class|const|let|var|interface|type|enum)\s+(\w+)",
+            )?,
             variables: Regex::new(r"(?m)^[\s]*(?:export\s+)?(?:const|let|var)\s+(\w+)")?,
             constants: Regex::new(r"(?m)^[\s]*(?:export\s+)?const\s+(\w+)")?,
             comments: Regex::new(r"(?m)^[\s]*(?://|/\*|\*)")?,
@@ -174,7 +186,7 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_python_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
             functions: Regex::new(r"(?m)^[\s]*(?:async\s+)?def\s+(\w+)\s*\(")?,
@@ -202,19 +214,27 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_java_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
-            functions: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>]+\s+(\w+)\s*\(")?,
-            classes: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*(?:abstract\s+)?(?:final\s+)?class\s+(\w+)")?,
+            functions: Regex::new(
+                r"(?m)^[\s]*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>]+\s+(\w+)\s*\(",
+            )?,
+            classes: Regex::new(
+                r"(?m)^[\s]*(?:public|private|protected)?\s*(?:abstract\s+)?(?:final\s+)?class\s+(\w+)",
+            )?,
             structs: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*record\s+(\w+)")?,
             enums: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*enum\s+(\w+)")?,
             interfaces: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*interface\s+(\w+)")?,
             modules: Regex::new(r"(?m)^[\s]*package\s+([^;]+)")?,
             imports: Regex::new(r"(?m)^[\s]*import\s+([^;]+)")?,
             exports: Regex::new(r"(?m)^[\s]*public\s+(?:class|interface|enum)\s+(\w+)")?,
-            variables: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>]+\s+(\w+)")?,
-            constants: Regex::new(r"(?m)^[\s]*(?:public|private|protected)?\s*static\s+final\s+[\w<>]+\s+([A-Z_][A-Z0-9_]*)")?,
+            variables: Regex::new(
+                r"(?m)^[\s]*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>]+\s+(\w+)",
+            )?,
+            constants: Regex::new(
+                r"(?m)^[\s]*(?:public|private|protected)?\s*static\s+final\s+[\w<>]+\s+([A-Z_][A-Z0-9_]*)",
+            )?,
             comments: Regex::new(r"(?m)^[\s]*(?://|/\*|\*)")?,
             complexity_indicators: vec![
                 Regex::new(r"\bif\b")?,
@@ -230,19 +250,27 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_cpp_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
-            functions: Regex::new(r"(?m)^[\s]*(?:inline\s+)?(?:virtual\s+)?(?:static\s+)?[\w:*&<>]+\s+(\w+)\s*\(")?,
+            functions: Regex::new(
+                r"(?m)^[\s]*(?:inline\s+)?(?:virtual\s+)?(?:static\s+)?[\w:*&<>]+\s+(\w+)\s*\(",
+            )?,
             classes: Regex::new(r"(?m)^[\s]*(?:template\s*<[^>]*>\s*)?class\s+(\w+)")?,
             structs: Regex::new(r"(?m)^[\s]*(?:template\s*<[^>]*>\s*)?struct\s+(\w+)")?,
             enums: Regex::new(r"(?m)^[\s]*enum\s+(?:class\s+)?(\w+)")?,
             interfaces: Regex::new(r"(?m)^[\s]*(?:template\s*<[^>]*>\s*)?class\s+(\w+)")?,
             modules: Regex::new(r"(?m)^[\s]*namespace\s+(\w+)")?,
             imports: Regex::new(r#"(?m)^[\s]*#include\s+[<"]([^>"]+)[>"]"#)?,
-            exports: Regex::new(r"(?m)^[\s]*(?:extern\s+)?(?:template\s*<[^>]*>\s*)?(?:class|struct|enum)\s+(\w+)")?,
-            variables: Regex::new(r"(?m)^[\s]*(?:extern\s+)?(?:static\s+)?(?:const\s+)?[\w:*&<>]+\s+(\w+)")?,
-            constants: Regex::new(r"(?m)^[\s]*(?:extern\s+)?(?:static\s+)?const\s+[\w:*&<>]+\s+([A-Z_][A-Z0-9_]*)")?,
+            exports: Regex::new(
+                r"(?m)^[\s]*(?:extern\s+)?(?:template\s*<[^>]*>\s*)?(?:class|struct|enum)\s+(\w+)",
+            )?,
+            variables: Regex::new(
+                r"(?m)^[\s]*(?:extern\s+)?(?:static\s+)?(?:const\s+)?[\w:*&<>]+\s+(\w+)",
+            )?,
+            constants: Regex::new(
+                r"(?m)^[\s]*(?:extern\s+)?(?:static\s+)?const\s+[\w:*&<>]+\s+([A-Z_][A-Z0-9_]*)",
+            )?,
             comments: Regex::new(r"(?m)^[\s]*(?://|/\*|\*)")?,
             complexity_indicators: vec![
                 Regex::new(r"\bif\b")?,
@@ -258,7 +286,7 @@ impl ParserAST {
             ],
         })
     }
-    
+
     fn create_go_patterns() -> Result<LanguagePatterns> {
         Ok(LanguagePatterns {
             functions: Regex::new(r"(?m)^[\s]*func\s+(?:\([^)]*\)\s*)?(\w+)\s*\(")?,
@@ -285,14 +313,108 @@ impl ParserAST {
         })
     }
 
-    /// Парсит файл с использованием продвинутого анализа
-    pub fn parse_file(&mut self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Vec<ASTElement>> {
-        // Используем кеширование для оптимизации
+    /// Парсит файл: если включён feature `tree_sitter`, используем парсер tree-sitter для поддерживаемых языков,
+    /// иначе — regex fallback. На ошибки — безопасный откат к regex.
+    pub fn parse_file(
+        &mut self,
+        file_path: &Path,
+        content: &str,
+        file_type: &FileType,
+    ) -> Result<Vec<ASTElement>> {
         let cache_key = format!("{}:{}", file_path.display(), content.len());
         if let Some(cached) = self.pattern_cache.get(&cache_key) {
             return Ok(cached.clone());
         }
 
+        #[cfg(feature = "tree_sitter")]
+        {
+            if let Some(elements) = self.try_tree_sitter_parse(file_path, content, file_type)? {
+                self.pattern_cache.insert(cache_key, elements.clone());
+                return Ok(elements);
+            }
+        }
+        // Fallback regex
+        let elements = self.parse_file_regex(file_path, content, file_type)?;
+        self.pattern_cache.insert(cache_key, elements.clone());
+        Ok(elements)
+    }
+
+    #[cfg(feature = "tree_sitter")]
+    fn try_tree_sitter_parse(
+        &self,
+        file_path: &Path,
+        content: &str,
+        file_type: &FileType,
+    ) -> Result<Option<Vec<ASTElement>>> {
+        use tree_sitter::Parser;
+        if content.trim().is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+        let mut parser = Parser::new();
+        let mut elements: Vec<ASTElement> = Vec::new();
+        match file_type {
+            FileType::Rust => {
+                parser
+                    .set_language(tree_sitter_rust::language())
+                    .map_err(|e| {
+                        crate::types::AnalysisError::Parse(format!("tree-sitter rust: {e:?}"))
+                    })?;
+                let tree = match parser.parse(content, None) {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+                self.ts_collect_rust_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            }
+            FileType::JavaScript => {
+                parser
+                    .set_language(tree_sitter_javascript::language())
+                    .map_err(|e| {
+                        crate::types::AnalysisError::Parse(format!("tree-sitter js: {e:?}"))
+                    })?;
+                let tree = match parser.parse(content, None) {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+                self.ts_collect_js_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            }
+            FileType::TypeScript => {
+                parser
+                    .set_language(tree_sitter_typescript::language_typescript())
+                    .map_err(|e| {
+                        crate::types::AnalysisError::Parse(format!("tree-sitter ts: {e:?}"))
+                    })?;
+                let tree = match parser.parse(content, None) {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+                self.ts_collect_js_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            }
+            FileType::Python => {
+                parser
+                    .set_language(tree_sitter_python::language())
+                    .map_err(|e| {
+                        crate::types::AnalysisError::Parse(format!("tree-sitter py: {e:?}"))
+                    })?;
+                let tree = match parser.parse(content, None) {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+                self.ts_collect_py_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn parse_file_regex(
+        &self,
+        _file_path: &Path,
+        content: &str,
+        file_type: &FileType,
+    ) -> Result<Vec<ASTElement>> {
         let patterns = match file_type {
             FileType::Rust => &self.rust_patterns,
             FileType::JavaScript => &self.js_patterns,
@@ -303,29 +425,28 @@ impl ParserAST {
             FileType::Go => &self.go_patterns,
             _ => return Ok(vec![]),
         };
-
         let mut elements = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
-        
-        // Анализируем каждую строку с использованием специализированных паттернов
         for (line_num, line) in lines.iter().enumerate() {
-            if let Some(element) = self.parse_line_advanced(line, line_num + 1, patterns, file_type) {
+            if let Some(element) = self.parse_line_advanced(line, line_num + 1, patterns, file_type)
+            {
                 elements.push(element);
             }
         }
-
-        // Вычисляем реальную сложность
         for element in &mut elements {
             element.complexity = self.calculate_complexity(&element.content, patterns);
         }
-
-        // Кешируем результат
-        self.pattern_cache.insert(cache_key, elements.clone());
         Ok(elements)
     }
 
     /// Продвинутый анализ строки с использованием regex паттернов
-    fn parse_line_advanced(&self, line: &str, line_num: usize, patterns: &LanguagePatterns, file_type: &FileType) -> Option<ASTElement> {
+    fn parse_line_advanced(
+        &self,
+        line: &str,
+        line_num: usize,
+        patterns: &LanguagePatterns,
+        file_type: &FileType,
+    ) -> Option<ASTElement> {
         let trimmed = line.trim();
         if trimmed.is_empty() || patterns.comments.is_match(trimmed) {
             return None;
@@ -420,7 +541,17 @@ impl ParserAST {
     }
 
     /// Создает элемент AST
-    fn create_element(&self, name: &str, element_type: ASTElementType, content: &str, line_num: usize, visibility: String, parameters: Vec<String>, return_type: Option<String>) -> ASTElement {
+    #[allow(clippy::too_many_arguments)]
+    fn create_element(
+        &self,
+        name: &str,
+        element_type: ASTElementType,
+        content: &str,
+        line_num: usize,
+        visibility: String,
+        parameters: Vec<String>,
+        return_type: Option<String>,
+    ) -> ASTElement {
         ASTElement {
             id: uuid::Uuid::new_v4(),
             name: name.to_string(),
@@ -461,7 +592,8 @@ impl ParserAST {
                 if params_str.trim().is_empty() {
                     return vec![];
                 }
-                return params_str.split(',')
+                return params_str
+                    .split(',')
                     .map(|p| p.trim().to_string())
                     .filter(|p| !p.is_empty())
                     .collect();
@@ -497,19 +629,19 @@ impl ParserAST {
     /// Вычисляет реальную сложность на основе содержимого
     fn calculate_complexity(&self, content: &str, patterns: &LanguagePatterns) -> u32 {
         let mut complexity = 1;
-        
+
         for indicator in &patterns.complexity_indicators {
             complexity += indicator.find_iter(content).count() as u32;
         }
-        
+
         // Добавляем сложность на основе других факторов
         let lines_count = content.lines().count() as u32;
         complexity += lines_count / 10; // Добавляем 1 за каждые 10 строк
-        
+
         // Добавляем сложность для вложенных структур
         let nesting_level = self.calculate_nesting_level(content);
         complexity += nesting_level * 2;
-        
+
         complexity
     }
 
@@ -517,7 +649,7 @@ impl ParserAST {
     fn calculate_nesting_level(&self, content: &str) -> u32 {
         let mut max_level = 0;
         let mut current_level: i32 = 0;
-        
+
         for ch in content.chars() {
             match ch {
                 '{' | '(' | '[' => {
@@ -530,8 +662,559 @@ impl ParserAST {
                 _ => {}
             }
         }
-        
+
         max_level.max(0) as u32
+    }
+}
+
+#[cfg(feature = "tree_sitter")]
+impl ParserAST {
+    fn ts_collect_rust_nodes(
+        &self,
+        content: &str,
+        file_path: &Path,
+        node: tree_sitter::Node,
+        out: &mut Vec<ASTElement>,
+    ) -> Result<()> {
+        // DFS with ancestor flag: inside impl/trait
+        let mut stack: Vec<(tree_sitter::Node, bool)> = vec![(node, false)];
+        while let Some((n, in_impl_trait)) = stack.pop() {
+            let kind = n.kind();
+            let now_in_impl_trait = in_impl_trait || kind == "impl_item" || kind == "trait_item";
+            match kind {
+                "function_item" => {
+                    if let Some(el) =
+                        self.ts_build_fn_element(content, &n, file_path, now_in_impl_trait)?
+                    {
+                        out.push(el);
+                    }
+                }
+                "struct_item" => {
+                    if let Some(el) =
+                        self.ts_build_named_element(content, &n, file_path, ASTElementType::Struct)?
+                    {
+                        out.push(el);
+                    }
+                }
+                "enum_item" => {
+                    if let Some(el) =
+                        self.ts_build_named_element(content, &n, file_path, ASTElementType::Enum)?
+                    {
+                        out.push(el);
+                    }
+                }
+                "trait_item" => {
+                    if let Some(el) = self.ts_build_named_element(
+                        content,
+                        &n,
+                        file_path,
+                        ASTElementType::Interface,
+                    )? {
+                        out.push(el);
+                    }
+                }
+                "mod_item" => {
+                    if let Some(el) =
+                        self.ts_build_named_element(content, &n, file_path, ASTElementType::Module)?
+                    {
+                        out.push(el);
+                    }
+                }
+                "use_declaration" => {
+                    if let Some(el) = self.ts_build_import_element(content, &n, file_path)? {
+                        out.push(el);
+                    }
+                }
+                _ => {}
+            }
+            for i in 0..n.child_count() {
+                if let Some(ch) = n.child(i) {
+                    stack.push((ch, now_in_impl_trait));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn ts_text<'a>(&self, content: &'a str, node: &tree_sitter::Node) -> &'a str {
+        let range = node.byte_range();
+        let bytes = content.as_bytes();
+        let start = range.start.min(bytes.len());
+        let end = range.end.min(bytes.len());
+        &content[start..end]
+    }
+
+    fn ts_find_child<'a>(
+        &self,
+        node: &'a tree_sitter::Node,
+        kind: &str,
+    ) -> Option<tree_sitter::Node<'a>> {
+        for i in 0..node.child_count() {
+            if let Some(ch) = node.child(i) {
+                if ch.kind() == kind {
+                    return Some(ch);
+                }
+            }
+        }
+        None
+    }
+
+    fn ts_identifier<'a>(&self, node: &'a tree_sitter::Node) -> Option<tree_sitter::Node<'a>> {
+        self.ts_find_child(node, "identifier")
+            .or_else(|| self.ts_find_child(node, "type_identifier"))
+    }
+
+    fn ts_visibility(&self, node: &tree_sitter::Node, content: &str) -> String {
+        let text = self.ts_text(content, node);
+        if text.trim_start().starts_with("pub") {
+            "public".to_string()
+        } else {
+            "private".to_string()
+        }
+    }
+
+    fn ts_build_named_element(
+        &self,
+        content: &str,
+        node: &tree_sitter::Node,
+        _file_path: &Path,
+        etype: ASTElementType,
+    ) -> Result<Option<ASTElement>> {
+        let id_node = match self.ts_identifier(node) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+        let name = self.ts_text(content, &id_node).trim().to_string();
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let visibility = self.ts_visibility(node, content);
+        let element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: etype,
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility,
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(element))
+    }
+
+    fn ts_build_fn_element(
+        &self,
+        content: &str,
+        node: &tree_sitter::Node,
+        _file_path: &Path,
+        is_method: bool,
+    ) -> Result<Option<ASTElement>> {
+        let id_node = match self.ts_identifier(node) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+        let name = self.ts_text(content, &id_node).trim().to_string();
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let visibility = self.ts_visibility(node, content);
+
+        // Parameters by substring between first '(' and matching ')'
+        let mut parameters: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') {
+            if let Some(rp) = text[lp..].find(')') {
+                let inside = &text[lp + 1..lp + rp];
+                parameters = inside
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        }
+        // Return type by substring after '->'
+        let return_type = if let Some(arrow) = text.find("->") {
+            Some(
+                text[arrow + 2..]
+                    .split('{')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        let mut element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: if is_method {
+                ASTElementType::Method
+            } else {
+                ASTElementType::Function
+            },
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility,
+            parameters,
+            return_type,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        // complexity from regex indicators
+        let patterns = &self.rust_patterns;
+        element.complexity = self.calculate_complexity(&element.content, patterns);
+        Ok(Some(element))
+    }
+
+    fn ts_build_import_element(
+        &self,
+        content: &str,
+        node: &tree_sitter::Node,
+        _file_path: &Path,
+    ) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        // Try to extract simple path after 'use'
+        let name = text
+            .trim()
+            .trim_start_matches("use")
+            .trim()
+            .trim_end_matches(';')
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Import,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".to_string(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(element))
+    }
+
+    // JavaScript / TypeScript collection
+    fn ts_collect_js_nodes(
+        &self,
+        content: &str,
+        file_path: &Path,
+        node: tree_sitter::Node,
+        out: &mut Vec<ASTElement>,
+    ) -> Result<()> {
+        let mut stack: Vec<tree_sitter::Node> = vec![node];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "function_declaration" => {
+                    if let Some(el) = self.ts_js_fn_or_method(content, &n, false)? {
+                        out.push(el);
+                    }
+                }
+                "method_definition" => {
+                    if let Some(el) = self.ts_js_fn_or_method(content, &n, true)? {
+                        out.push(el);
+                    }
+                }
+                "class_declaration" => {
+                    if let Some(el) = self.ts_js_class(content, &n)? {
+                        out.push(el);
+                    }
+                }
+                "import_declaration" => {
+                    if let Some(el) = self.ts_js_import(content, &n)? {
+                        out.push(el);
+                    }
+                }
+                _ => {}
+            }
+            for i in 0..n.child_count() {
+                if let Some(ch) = n.child(i) {
+                    stack.push(ch);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn ts_js_ident(&self, node: &tree_sitter::Node, content: &str) -> Option<String> {
+        // try identifier child else derive from text
+        for i in 0..node.child_count() {
+            if let Some(ch) = node.child(i) {
+                if ch.kind() == "identifier" {
+                    return Some(self.ts_text(content, &ch).trim().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn ts_js_fn_or_method(
+        &self,
+        content: &str,
+        node: &tree_sitter::Node,
+        is_method: bool,
+    ) -> Result<Option<ASTElement>> {
+        let name = self
+            .ts_js_ident(node, content)
+            .unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let mut params: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') {
+            if let Some(rp) = text[lp..].find(')') {
+                let inside = &text[lp + 1..lp + rp];
+                params = inside
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        }
+        let mut elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: if is_method {
+                ASTElementType::Method
+            } else {
+                ASTElementType::Function
+            },
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: params,
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        let patterns = &self.js_patterns;
+        elem.complexity = self.calculate_complexity(&elem.content, patterns);
+        Ok(Some(elem))
+    }
+
+    fn ts_js_class(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let name = self
+            .ts_js_ident(node, content)
+            .unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Class,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(elem))
+    }
+
+    fn ts_js_import(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let name = text.lines().next().unwrap_or("").trim().to_string();
+        let elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Import,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(elem))
+    }
+
+    // Python collection
+    fn ts_collect_py_nodes(
+        &self,
+        content: &str,
+        file_path: &Path,
+        node: tree_sitter::Node,
+        out: &mut Vec<ASTElement>,
+    ) -> Result<()> {
+        let mut stack: Vec<tree_sitter::Node> = vec![node];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "function_definition" => {
+                    if let Some(el) = self.ts_py_function(content, &n)? {
+                        out.push(el);
+                    }
+                }
+                "class_definition" => {
+                    if let Some(el) = self.ts_py_class(content, &n)? {
+                        out.push(el);
+                    }
+                }
+                "import_statement" | "import_from_statement" => {
+                    if let Some(el) = self.ts_py_import(content, &n)? {
+                        out.push(el);
+                    }
+                }
+                _ => {}
+            }
+            for i in 0..n.child_count() {
+                if let Some(ch) = n.child(i) {
+                    stack.push(ch);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn ts_py_ident(&self, node: &tree_sitter::Node, content: &str) -> Option<String> {
+        for i in 0..node.child_count() {
+            if let Some(ch) = node.child(i) {
+                if ch.kind() == "identifier" {
+                    return Some(self.ts_text(content, &ch).trim().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn ts_py_function(
+        &self,
+        content: &str,
+        node: &tree_sitter::Node,
+    ) -> Result<Option<ASTElement>> {
+        let name = self
+            .ts_py_ident(node, content)
+            .unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let mut params: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') {
+            if let Some(rp) = text[lp..].find(')') {
+                let inside = &text[lp + 1..lp + rp];
+                params = inside
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        }
+        let mut elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Function,
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: params,
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        let patterns = &self.python_patterns;
+        elem.complexity = self.calculate_complexity(&elem.content, patterns);
+        Ok(Some(elem))
+    }
+
+    fn ts_py_class(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let name = self
+            .ts_py_ident(node, content)
+            .unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Class,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(elem))
+    }
+
+    fn ts_py_import(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let name = text.lines().next().unwrap_or("").trim().to_string();
+        let elem = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Import,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".into(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(elem))
     }
 }
 
@@ -667,4 +1350,4 @@ impl Default for ParserAST {
             pattern_cache: HashMap::new(),
         })
     }
-} 
+}

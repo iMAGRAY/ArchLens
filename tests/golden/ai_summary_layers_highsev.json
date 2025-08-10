@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "components": 4,
+    "relations": 7,
+    "complexity_avg": 6.0,
+    "coupling_index": 0.6,
+    "cohesion_index": 0.4,
+    "cyclomatic_complexity": 7,
+    "layers": [
+      {"name": "Core", "count": 3},
+      {"name": "Infra", "count": 1}
+    ]
+  },
+  "problems_validated": [
+    {
+      "category": "complexity",
+      "count": 2,
+      "severity": {"H": 1, "M": 1, "L": 0},
+      "top_components": ["A", "C"],
+      "hint": "reduce complexity"
+    },
+    {
+      "category": "coupling",
+      "count": 1,
+      "severity": {"H": 1, "M": 0, "L": 0},
+      "top_components": ["B"],
+      "hint": "decouple"
+    }
+  ],
+  "top_coupling": [
+    {"component": "A", "degree": 4},
+    {"component": "B", "degree": 3},
+    {"component": "C", "degree": 3},
+    {"component": "D", "degree": 4}
+  ],
+  "top_complexity_components": [
+    {"component": "C", "type": "Module", "complexity": 9},
+    {"component": "A", "type": "Module", "complexity": 7},
+    {"component": "B", "type": "Module", "complexity": 5},
+    {"component": "D", "type": "Module", "complexity": 3}
+  ]
+}

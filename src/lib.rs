@@ -1,23 +1,23 @@
 //! # ArchLens - Architectural Analysis Tool
-//! 
+//!
 //! ArchLens is a comprehensive architectural analysis tool for software projects.
 //! It provides deep insights into code structure, dependencies, quality metrics,
 //! and architectural patterns.
-//! 
+//!
 //! ## Features
-//! 
+//!
 //! - **Code Analysis**: Analyze code structure and complexity
 //! - **Dependency Tracking**: Track and visualize dependencies
 //! - **Quality Metrics**: Calculate maintainability and quality scores
 //! - **Pattern Detection**: Detect architectural patterns and anti-patterns
 //! - **Validation**: Validate SOLID principles and architectural rules
 //! - **Export**: Export analysis results in various formats
-//! 
+//!
 //! ## Usage
-//! 
+//!
 //! ```rust
 //! use archlens::*;
-//! 
+//!
 //! // Analyze a project
 //! let analyzer = commands::ArchLensAnalyzer::new();
 //! let result = analyzer.analyze_project("path/to/project");
@@ -78,9 +78,9 @@ pub mod graph;
 /// This prevents issues with relative paths in MCP and other integrations
 pub fn ensure_absolute_path<P: AsRef<std::path::Path>>(path: P) -> std::path::PathBuf {
     use std::path::PathBuf;
-    
+
     let path = path.as_ref();
-    
+
     if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -115,4 +115,4 @@ pub fn get_default_project_path() -> std::path::PathBuf {
 // pub mod integration_tests;  // Temporarily disabled for debugging
 
 #[cfg(test)]
-mod test_commands; 
+mod test_commands;

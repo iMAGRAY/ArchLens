@@ -1,25 +1,22 @@
-use std::path::PathBuf;
-use crate::types::{
-    Capsule, CapsuleType, CapsuleStatus, Priority, Result
-};
 use crate::parser_ast::ASTElement;
+use crate::types::{Capsule, CapsuleStatus, CapsuleType, Priority, Result};
 use std::collections::HashMap;
-use chrono::Utc;
+use std::path::Path;
 use uuid::Uuid;
 
 /// Core capsule constructor - creates architectural capsules from AST elements
-/// 
+///
 /// The `CapsuleConstructor` is responsible for converting Abstract Syntax Tree (AST)
 /// elements into architectural capsules that can be analyzed and visualized.
 /// It applies various heuristics to determine the significance, type, and properties
 /// of code elements.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```rust
 /// use archlens::constructor::CapsuleConstructor;
 /// use std::path::PathBuf;
-/// 
+///
 /// let constructor = CapsuleConstructor::new();
 /// let capsules = constructor.create_capsules(&ast_elements, &PathBuf::from("src/main.rs"));
 /// ```
@@ -33,7 +30,7 @@ pub struct CapsuleConstructor {
 
 impl CapsuleConstructor {
     /// Creates a new capsule constructor with default settings
-    /// 
+    ///
     /// # Default Settings
     /// - `min_complexity_threshold`: 5
     /// - `max_capsule_size`: 1000
@@ -45,21 +42,21 @@ impl CapsuleConstructor {
     }
 
     /// Creates capsules from a collection of AST elements
-    /// 
+    ///
     /// This method processes each AST element and creates corresponding capsules
     /// for elements that meet the significance criteria.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `ast_elements` - Slice of AST elements to process
     /// * `file_path` - Path to the source file being analyzed
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A `Result` containing a vector of created capsules, or an error if processing fails.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// # use archlens::constructor::CapsuleConstructor;
     /// # use std::path::PathBuf;
@@ -69,7 +66,7 @@ impl CapsuleConstructor {
     pub fn create_capsules(
         &self,
         ast_elements: &[ASTElement],
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Result<Vec<Capsule>> {
         let mut capsules = Vec::new();
 
@@ -83,13 +80,13 @@ impl CapsuleConstructor {
     }
 
     /// Creates a capsule from a single AST element
-    /// 
+    ///
     /// This method applies various analysis techniques to determine if an AST element
     /// should become a capsule and what its properties should be.
     fn create_capsule_from_element(
         &self,
         element: &ASTElement,
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Result<Option<Capsule>> {
         // Filter elements by significance
         if !self.is_significant_element(element) {
@@ -115,7 +112,10 @@ impl CapsuleConstructor {
             dependencies: vec![],
             layer: Some(layer.clone()),
             summary: None,
-            description: Some(format!("Element {} of type {:?}", element.name, element.element_type)),
+            description: Some(format!(
+                "Element {} of type {:?}",
+                element.name, element.element_type
+            )),
             warnings,
             status,
             priority,
@@ -131,26 +131,26 @@ impl CapsuleConstructor {
     }
 
     /// Creates a capsule from a node (simplified version)
-    /// 
+    ///
     /// This is a simplified method for creating capsules when full AST analysis
     /// is not available or needed.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `node` - The AST element to convert
     /// * `file_path` - Path to the source file
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A `Result` containing the created capsule
-    pub fn create_capsule_from_node(&self, node: &ASTElement, file_path: &PathBuf) -> Result<Capsule> {
+    pub fn create_capsule_from_node(&self, node: &ASTElement, file_path: &Path) -> Result<Capsule> {
         let id = Uuid::new_v4();
-        
+
         let capsule = Capsule {
             id,
             name: node.name.clone(),
             capsule_type: CapsuleType::Module,
-            file_path: file_path.clone(),
+            file_path: file_path.to_path_buf(),
             line_start: node.start_line,
             line_end: node.end_line,
             size: node.end_line - node.start_line,
@@ -169,30 +169,37 @@ impl CapsuleConstructor {
             dependents: Vec::new(),
             created_at: None,
         };
-        
+
         Ok(capsule)
     }
 
     /// Checks if an AST element is significant enough to become a capsule
-    /// 
+    ///
     /// Elements are considered significant if they represent important structural
     /// components like functions, classes, modules, or public constants/variables.
     fn is_significant_element(&self, element: &ASTElement) -> bool {
         match element.element_type {
-            crate::parser_ast::ASTElementType::Function | crate::parser_ast::ASTElementType::Method => true,
-            crate::parser_ast::ASTElementType::Class | crate::parser_ast::ASTElementType::Struct => true,
-            crate::parser_ast::ASTElementType::Interface | crate::parser_ast::ASTElementType::Enum => true,
+            crate::parser_ast::ASTElementType::Function
+            | crate::parser_ast::ASTElementType::Method => true,
+            crate::parser_ast::ASTElementType::Class
+            | crate::parser_ast::ASTElementType::Struct => true,
+            crate::parser_ast::ASTElementType::Interface
+            | crate::parser_ast::ASTElementType::Enum => true,
             crate::parser_ast::ASTElementType::Module => true,
             crate::parser_ast::ASTElementType::Constant => element.visibility == "public",
             crate::parser_ast::ASTElementType::Variable => element.visibility == "public",
-            crate::parser_ast::ASTElementType::Import | crate::parser_ast::ASTElementType::Export => false,
+            crate::parser_ast::ASTElementType::Import
+            | crate::parser_ast::ASTElementType::Export => false,
             crate::parser_ast::ASTElementType::Comment => false,
             crate::parser_ast::ASTElementType::Other(_) => false,
         }
     }
 
     /// Converts AST element type to capsule type
-    fn convert_ast_type_to_capsule_type(&self, ast_type: &crate::parser_ast::ASTElementType) -> CapsuleType {
+    fn convert_ast_type_to_capsule_type(
+        &self,
+        ast_type: &crate::parser_ast::ASTElementType,
+    ) -> CapsuleType {
         match ast_type {
             crate::parser_ast::ASTElementType::Function => CapsuleType::Function,
             crate::parser_ast::ASTElementType::Method => CapsuleType::Method,
@@ -213,9 +220,13 @@ impl CapsuleConstructor {
     /// Calculates priority based on element type and visibility
     fn calculate_priority(&self, element: &ASTElement) -> Priority {
         match element.element_type {
-            crate::parser_ast::ASTElementType::Class | crate::parser_ast::ASTElementType::Interface => Priority::High,
-            crate::parser_ast::ASTElementType::Struct | crate::parser_ast::ASTElementType::Enum => Priority::Medium,
-            crate::parser_ast::ASTElementType::Function | crate::parser_ast::ASTElementType::Method => {
+            crate::parser_ast::ASTElementType::Class
+            | crate::parser_ast::ASTElementType::Interface => Priority::High,
+            crate::parser_ast::ASTElementType::Struct | crate::parser_ast::ASTElementType::Enum => {
+                Priority::Medium
+            }
+            crate::parser_ast::ASTElementType::Function
+            | crate::parser_ast::ASTElementType::Method => {
                 if element.visibility == "public" {
                     Priority::Medium
                 } else {
@@ -230,12 +241,13 @@ impl CapsuleConstructor {
     /// Determines element status based on content analysis
     fn determine_status(&self, element: &ASTElement) -> CapsuleStatus {
         let content_lower = element.content.to_lowercase();
-        
+
         if content_lower.contains("deprecated") || content_lower.contains("@deprecated") {
             CapsuleStatus::Deprecated
         } else if content_lower.contains("todo") || content_lower.contains("fixme") {
             CapsuleStatus::Pending
-        } else if content_lower.contains("@experimental") || content_lower.contains("experimental") {
+        } else if content_lower.contains("@experimental") || content_lower.contains("experimental")
+        {
             CapsuleStatus::Active
         } else if element.visibility == "private" {
             CapsuleStatus::Hidden
@@ -245,7 +257,7 @@ impl CapsuleConstructor {
     }
 
     /// Determines architectural layer based on file path
-    fn determine_layer(&self, file_path: &PathBuf) -> String {
+    fn determine_layer(&self, file_path: &Path) -> String {
         if let Some(parent) = file_path.parent() {
             if let Some(dir_name) = parent.file_name() {
                 if let Some(dir_str) = dir_name.to_str() {
@@ -287,4 +299,4 @@ impl Default for CapsuleConstructor {
     fn default() -> Self {
         Self::new()
     }
-} 
+}

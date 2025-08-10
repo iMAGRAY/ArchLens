@@ -111,6 +111,36 @@ cargo build --release
 ./archlens diagram . mermaid --include-metrics
 ```
 
+### 🔍 Глубокий Анализ (CLI)
+
+```bash
+# Полный пайплайн (scan -> AST -> capsules -> graph -> validators)
+./archlens analyze . --deep > deep_analysis.json
+```
+
+### 🤖 MCP Параметры
+
+- `project_path`: принимает абсолютные и относительные пути ('.', './src')
+- `detail_level`: `summary` (по умолчанию) | `standard` | `full`
+- `deep`: `true` для запуска полного пайплайна
+
+```json
+{
+  "project_path": ".",
+  "detail_level": "summary",
+  "deep": true
+}
+```
+
+### 📦 AI Compact Отчет (Разделы)
+
+- Summary: суммарные метрики и средняя сложность
+- Problems (Heuristic): coupling/cohesion/сложность графа
+- Problems (Validated): агрегированные предупреждения валидаторов (топ категорий и компонентов)
+- Cycles (Top): топ циклов по длине (A -> B -> ... -> A)
+- Top Coupling: узлы‑«хабы» по степени
+- Top Complexity Components: топ‑10 компонентов по сложности
+
 ---
 
 ## 🤖 Интеграция с ИИ
@@ -118,6 +148,9 @@ cargo build --release
 ### 🔌 MCP Сервер (Model Context Protocol)
 
 ArchLens включает мощный MCP сервер для бесшовной интеграции с ИИ-ассистентами:
+
+- Теперь поддерживает относительные пути ('.', './src') — они безопасно резолвятся в абсолютные.
+- Ответы компактны по умолчанию (минимум токенов без потери ключевой информации).
 
 #### 🛠️ Настройка с Claude Desktop
 
@@ -492,4 +525,107 @@ focus_critical = false
 
 *Поставьте ⭐ этому репозиторию, если он вам помог!*
 
-</div> 
+</div>
+
+## 🔌 MCP Сервер (Rust) — Быстрый старт
+
+- Сборка: `cargo build --release --bin archlens-mcp`
+- Транспорты:
+  - STDIO (JSON‑RPC): `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
+  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /export/ai_summary_json`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`, `POST /tools/list`, `POST /tools/call`, `POST /tools/call/stream`
+- detail_level: `summary` (по умолчанию) | `standard` | `full` — управляет подробностью и бюджетом токенов
+- Переменные окружения: `ARCHLENS_MCP_PORT` (порт HTTP, по умолчанию 5178), `ARCHLENS_TIMEOUT_MS` (таймаут запроса, по умолчанию 60000), `ARCHLENS_TEST_DELAY_MS` (искусственная задержка для тестов), `ARCHLENS_CACHE_TTL_MS` (TTL файлового кеша, по умолчанию 120000), пороги рекомендаций: `ARCHLENS_TH_COMPLEXITY_AVG` (по умолчанию 8.0), `ARCHLENS_TH_COUPLING_INDEX` (0.7), `ARCHLENS_TH_COHESION_INDEX` (0.3), `ARCHLENS_TH_LAYER_IMBALANCE_PCT` (60), `ARCHLENS_TH_HIGH_SEV_CATS` (2)
+- Инвалидация кеша: ключи кеша теперь включают отпечаток проекта: `git rev-parse HEAD` (+ `-dirty` при несохранённых изменениях) или быстрый FS‑отпечаток (число файлов, общий объём, последний mtime), если git недоступен.
+- LRU кеш (опционально): `ARCHLENS_CACHE_MAX_ENTRIES` (лимит числа файлов в кешe), `ARCHLENS_CACHE_MAX_BYTES` (лимит общего размера кеша, байты). Сначала удаляются самые старые.
+
+Примеры
+
+STDIO (строки в stdin):
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary"}}}
+```
+
+HTTP (порт по умолчанию 5178):
+```bash
+# AI‑compact (summary)
+curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":".","detail_level":"summary"}'
+
+# Структура (standard)
+curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":".","detail_level":"standard"}'
+
+# Диаграмма (full)
+curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"full"}'
+
+# Схемы
+curl -s localhost:5178/schemas/list | jq
+```
+
+Конфигурация Cursor/Claude (STDIO):
+
+Рекомендуемый маршрут для ИИ‑агента:
+- Начать с `export.ai_summary_json` (top_n=5) — минимальные факты
+- Вызвать `/ai/recommend` (или `ai.recommend` по STDIO) с этим JSON — получить следующие оптимальные вызовы
+- Детализировать `export.ai_compact` через `sections` и `top_n` (и `max_output_chars`)
+- Визуализировать `graph.build`, если есть циклы/сильная связанность
+- Кэшировать через `etag` и `use_cache` — экономия токенов
+```json
+{
+  "mcpServers": {
+    "archlens": {
+      "command": "/absolute/path/to/target/release/archlens-mcp",
+      "env": { "ARCHLENS_DEBUG": "false" }
+    }
+  }
+}
+``` 
+
+## 🧪 AI Рецепты
+
+- Health Check (минимум токенов, только факты)
+  - HTTP:
+    ```bash
+    # 1) Получить структурированные факты
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' \
+      -d '{"project_path":".","top_n":5,"max_output_chars":20000}' | jq > summary.json
+
+    # 2) Запросить следующие оптимальные вызовы
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json summary.json)}" | jq
+    ```
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_summary_json","arguments":{"project_path":".","top_n":5}}}
+    {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai.recommend","arguments":{"project_path":".","json":<вставьте JSON здесь>}}}
+    ```
+
+- Исследование циклов
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"cycles\"}" | jq
+    # Если есть циклы → получить граф
+    curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"summary"}'
+    ```
+
+- План рефакторинга (при High‑severity проблемах)
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"plan\"}" | jq
+    # Затем используйте prompt 'ai.refactor.plan' на стороне клиента с секциями compact/problems как контекст
+    ```
+
+- Аудит связанности (хабы и циклы)
+  - STDIO (таргетированные секции):
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["cycles","top_coupling"],"top_n":10,"max_output_chars":18000,"use_cache":true}}}
+    ```
+
+- Горячие точки сложности
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["top_complexity_components"],"top_n":10,"max_output_chars":16000}}}
+    ``` 

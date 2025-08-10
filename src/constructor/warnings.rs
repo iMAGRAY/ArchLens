@@ -1,5 +1,5 @@
-use crate::types::{AnalysisWarning, Priority};
 use crate::parser_ast::ASTElement;
+use crate::types::{AnalysisWarning, Priority};
 use std::collections::HashMap;
 
 /// Warning analyzer for capsule elements
@@ -35,17 +35,21 @@ impl WarningAnalyzer {
         }
 
         // Check documentation for public elements
-        if !matches!(element.element_type, crate::parser_ast::ASTElementType::Import | crate::parser_ast::ASTElementType::Export)
-            && element.visibility == "public"
-            && !content_lower.contains("///") && !content_lower.contains("/**") {
-                warnings.push(AnalysisWarning {
-                    level: Priority::Low,
-                    message: "Public element without documentation".to_string(),
-                    category: "documentation".to_string(),
-                    capsule_id: None,
-                    suggestion: Some("Add documentation to public interfaces".to_string()),
-                });
-            }
+        if !matches!(
+            element.element_type,
+            crate::parser_ast::ASTElementType::Import | crate::parser_ast::ASTElementType::Export
+        ) && element.visibility == "public"
+            && !content_lower.contains("///")
+            && !content_lower.contains("/**")
+        {
+            warnings.push(AnalysisWarning {
+                level: Priority::Low,
+                message: "Public element without documentation".to_string(),
+                category: "documentation".to_string(),
+                capsule_id: None,
+                suggestion: Some("Add documentation to public interfaces".to_string()),
+            });
+        }
 
         // Check for TODO/FIXME
         if content_lower.contains("todo") {
@@ -85,14 +89,14 @@ impl WarningAnalyzer {
     fn has_repeated_patterns(content: &str) -> bool {
         let lines: Vec<&str> = content.lines().collect();
         let mut pattern_count = HashMap::new();
-        
+
         for line in lines {
             let trimmed = line.trim();
             if trimmed.len() > 20 {
                 *pattern_count.entry(trimmed).or_insert(0) += 1;
             }
         }
-        
+
         pattern_count.values().any(|&count| count > 3)
     }
-} 
+}

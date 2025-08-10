@@ -225,3 +225,17 @@ export async function analyzeWorkspace() {
 [Share it with the community!](https://github.com/yourusername/archlens/discussions)
 
 </div> 
+
+### Deep analysis (CLI)
+```bash
+./archlens analyze . --deep > deep_analysis.json
+```
+
+### MCP detail level
+```json
+{
+  "project_path": ".",
+  "detail_level": "summary", // or "standard" | "full"
+  "deep": true
+}
+``` 

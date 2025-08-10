@@ -1,6 +1,5 @@
-use crate::types::{FileMetadata, FileType, CapsuleStatus, AnalysisError, Result};
+use crate::types::{AnalysisError, CapsuleStatus, FileMetadata, FileType, Result};
 use std::{fs, path::Path};
-use walkdir::WalkDir;
 
 /// Сканер файлов проекта
 pub struct FileScanner {
@@ -48,11 +47,18 @@ impl FileScanner {
 
     /// Версия scan_files без параметров (для совместимости)
     pub fn scan_files_no_params(&self) -> Result<Vec<FileMetadata>> {
-        Err(AnalysisError::GenericError("Не указан путь для сканирования".to_string()))
+        Err(AnalysisError::GenericError(
+            "Не указан путь для сканирования".to_string(),
+        ))
     }
 
     /// Рекурсивно сканирует директории
-    fn scan_directory_recursive(&self, dir: &Path, files: &mut Vec<FileMetadata>, depth: usize) -> Result<()> {
+    fn scan_directory_recursive(
+        &self,
+        dir: &Path,
+        files: &mut Vec<FileMetadata>,
+        depth: usize,
+    ) -> Result<()> {
         if let Some(max_depth) = self.max_depth {
             if depth >= max_depth {
                 return Ok(());
@@ -67,7 +73,10 @@ impl FileScanner {
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(e) => {
-                eprintln!("⚠️ Предупреждение: Не удалось получить доступ к директории {:?}: {}", dir, e);
+                eprintln!(
+                    "⚠️ Предупреждение: Не удалось получить доступ к директории {:?}: {}",
+                    dir, e
+                );
                 return Ok(()); // Пропускаем недоступные директории
             }
         };
@@ -76,17 +85,23 @@ impl FileScanner {
             let entry = match entry_result {
                 Ok(entry) => entry,
                 Err(e) => {
-                    eprintln!("⚠️ Предупреждение: Ошибка чтения элемента в {:?}: {}", dir, e);
+                    eprintln!(
+                        "⚠️ Предупреждение: Ошибка чтения элемента в {:?}: {}",
+                        dir, e
+                    );
                     continue; // Пропускаем проблемные элементы
                 }
             };
-            
+
             let path = entry.path();
 
             if path.is_dir() {
                 // Рекурсивно сканируем поддиректории, но не прерываем работу при ошибках
                 if let Err(e) = self.scan_directory_recursive(&path, files, depth + 1) {
-                    eprintln!("⚠️ Предупреждение: Ошибка сканирования директории {:?}: {}", path, e);
+                    eprintln!(
+                        "⚠️ Предупреждение: Ошибка сканирования директории {:?}: {}",
+                        path, e
+                    );
                 }
             } else {
                 match self.extract_file_metadata(&path) {
@@ -97,7 +112,10 @@ impl FileScanner {
                     }
                     Err(e) => {
                         // Более детальная информация об ошибках доступа к файлам
-                        eprintln!("⚠️ Предупреждение: Не удалось прочитать файл {:?}: {}", path, e);
+                        eprintln!(
+                            "⚠️ Предупреждение: Не удалось прочитать файл {:?}: {}",
+                            path, e
+                        );
                     }
                 }
             }
@@ -111,27 +129,36 @@ impl FileScanner {
         let metadata = match fs::metadata(path) {
             Ok(metadata) => metadata,
             Err(e) => {
-                return Err(AnalysisError::GenericError(format!("Не удалось получить метаданные файла {:?}: {}", path, e)));
+                return Err(AnalysisError::GenericError(format!(
+                    "Не удалось получить метаданные файла {:?}: {}",
+                    path, e
+                )));
             }
         };
-        
+
         let file_type = self.detect_file_type(path);
-        
+
         let content = match fs::read_to_string(path) {
             Ok(content) => content,
             Err(e) => {
                 // Логируем ошибку, но не прерываем работу
-                eprintln!("⚠️ Предупреждение: Не удалось прочитать содержимое файла {:?}: {}", path, e);
+                eprintln!(
+                    "⚠️ Предупреждение: Не удалось прочитать содержимое файла {:?}: {}",
+                    path, e
+                );
                 String::new()
             }
         };
-        
+
         let lines_count = content.lines().count();
 
         let last_modified = match metadata.modified() {
             Ok(time) => time.into(),
             Err(e) => {
-                eprintln!("⚠️ Предупреждение: Не удалось получить время модификации файла {:?}: {}", path, e);
+                eprintln!(
+                    "⚠️ Предупреждение: Не удалось получить время модификации файла {:?}: {}",
+                    path, e
+                );
                 std::time::SystemTime::now().into()
             }
         };
@@ -174,14 +201,17 @@ impl FileScanner {
     /// Определяет архитектурный слой по пути файла
     fn detect_layer(&self, path: &Path) -> Option<String> {
         let path_str = path.to_string_lossy().to_lowercase();
-        
+
         if path_str.contains("domain") || path_str.contains("core") {
             Some("domain".to_string())
         } else if path_str.contains("infrastructure") || path_str.contains("infra") {
             Some("infrastructure".to_string())
         } else if path_str.contains("application") || path_str.contains("app") {
             Some("application".to_string())
-        } else if path_str.contains("ui") || path_str.contains("view") || path_str.contains("component") {
+        } else if path_str.contains("ui")
+            || path_str.contains("view")
+            || path_str.contains("component")
+        {
             Some("presentation".to_string())
         } else if path_str.contains("test") {
             Some("test".to_string())
@@ -193,11 +223,14 @@ impl FileScanner {
     /// Извлекает слоган из комментариев файла
     fn extract_slogan(&self, content: &str) -> Option<String> {
         let lines = content.lines().take(10);
-        
+
         for line in lines {
             let trimmed = line.trim();
             if trimmed.starts_with("//!") || trimmed.starts_with("///") {
-                let comment = trimmed.trim_start_matches("//!").trim_start_matches("///").trim();
+                let comment = trimmed
+                    .trim_start_matches("//!")
+                    .trim_start_matches("///")
+                    .trim();
                 if !comment.is_empty() && comment.len() < 100 {
                     return Some(comment.to_string());
                 }
@@ -212,14 +245,17 @@ impl FileScanner {
                 }
             }
         }
-        
+
         None
     }
 
     /// Определяет статус файла
     fn detect_status(&self, content: &str) -> CapsuleStatus {
         let content_lower = content.to_lowercase();
-        if content_lower.contains("test") || content_lower.contains("#[test]") || content_lower.contains("describe(") {
+        if content_lower.contains("test")
+            || content_lower.contains("#[test]")
+            || content_lower.contains("describe(")
+        {
             CapsuleStatus::Pending
         } else if content_lower.contains("deprecated") || content_lower.contains("@deprecated") {
             CapsuleStatus::Archived
@@ -231,10 +267,16 @@ impl FileScanner {
     }
 
     /// Извлекает импорты и экспорты
-    fn extract_imports_exports(&self, content: &str, file_type: &FileType) -> (Vec<String>, Vec<String>) {
+    fn extract_imports_exports(
+        &self,
+        content: &str,
+        file_type: &FileType,
+    ) -> (Vec<String>, Vec<String>) {
         match file_type {
             FileType::Rust => self.extract_rust_imports_exports(content),
-            FileType::TypeScript | FileType::JavaScript => self.extract_ts_js_imports_exports(content),
+            FileType::TypeScript | FileType::JavaScript => {
+                self.extract_ts_js_imports_exports(content)
+            }
             FileType::Python => self.extract_python_imports_exports(content),
             FileType::Java => self.extract_java_imports_exports(content),
             FileType::Cpp | FileType::C => self.extract_cpp_imports_exports(content),
@@ -312,7 +354,7 @@ impl FileScanner {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            
+
             // Java imports
             if trimmed.starts_with("import ") && trimmed.ends_with(";") {
                 if let Some(import) = trimmed.strip_prefix("import ") {
@@ -322,7 +364,7 @@ impl FileScanner {
                     }
                 }
             }
-            
+
             // Java public exports (classes, interfaces, methods)
             if trimmed.contains("public ") {
                 if let Some(export) = extract_java_export_name(trimmed) {
@@ -340,11 +382,12 @@ impl FileScanner {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            
+
             // C++ includes
             if trimmed.starts_with("#include ") {
                 if let Some(include) = trimmed.strip_prefix("#include ") {
-                    let include_clean = include.trim()
+                    let include_clean = include
+                        .trim()
                         .trim_start_matches('<')
                         .trim_end_matches('>')
                         .trim_start_matches('"')
@@ -352,10 +395,13 @@ impl FileScanner {
                     imports.push(include_clean.to_string());
                 }
             }
-            
+
             // C++ exports (classes, functions, namespaces)
-            if trimmed.contains("class ") || trimmed.contains("struct ") || 
-               trimmed.contains("namespace ") || trimmed.contains("extern ") {
+            if trimmed.contains("class ")
+                || trimmed.contains("struct ")
+                || trimmed.contains("namespace ")
+                || trimmed.contains("extern ")
+            {
                 if let Some(export) = extract_cpp_export_name(trimmed) {
                     exports.push(export);
                 }
@@ -377,16 +423,24 @@ impl FileScanner {
         }
 
         // Упрощенная проверка: включаем файлы с нужными расширениями
-        let file_extension = metadata.path.extension()
+        let file_extension = metadata
+            .path
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        let supported_extensions = ["rs", "js", "ts", "tsx", "jsx", "py", "java", "cpp", "cc", "cxx", "c", "h", "hpp", "hxx"];
+        let supported_extensions = [
+            "rs", "js", "ts", "tsx", "jsx", "py", "java", "cpp", "cc", "cxx", "c", "h", "hpp",
+            "hxx",
+        ];
         let extension_match = supported_extensions.contains(&file_extension);
 
         // Если есть include patterns, проверяем их
         if !self.include_patterns.is_empty() {
-            let pattern_match = self.include_patterns.iter().any(|pattern| pattern.is_match(&path_str));
+            let pattern_match = self
+                .include_patterns
+                .iter()
+                .any(|pattern| pattern.is_match(&path_str));
             extension_match && pattern_match
         } else {
             extension_match
@@ -399,7 +453,7 @@ fn glob_to_regex(pattern: &str) -> std::result::Result<regex::Regex, regex::Erro
     let mut regex_pattern = String::new();
     let chars: Vec<char> = pattern.chars().collect();
     let mut i = 0;
-    
+
     while i < chars.len() {
         match chars[i] {
             '*' if i + 1 < chars.len() && chars[i + 1] == '*' => {
@@ -451,14 +505,14 @@ fn glob_to_regex(pattern: &str) -> std::result::Result<regex::Regex, regex::Erro
             }
         }
     }
-    
+
     // Делаем паттерн более гибким - он может совпадать в любом месте пути
     let final_pattern = if pattern.starts_with("**/") {
         format!(".*{regex_pattern}")
     } else {
         regex_pattern
     };
-    
+
     regex::Regex::new(&final_pattern)
 }
 

@@ -34,7 +34,7 @@
 - **Risk Assessment**: Automated architectural risk evaluation
 
 ### 🤖 **AI-Ready Output**
-- **MCP Server**: Direct integration with Claude and other AI assistants
+- **MCP Server (Rust)**: Official STDIO and Streamable HTTP transports with JSON Schema publishing
 - **Structured Reports**: JSON/Markdown exports optimized for AI consumption
 - **Interactive Diagrams**: Mermaid diagrams for visual architecture representation
 - **Context-Rich**: Detailed explanations suitable for AI-assisted refactoring
@@ -95,12 +95,16 @@ cargo build --release
 
 #### 🤖 AI-Ready Export
 ```bash
-# Export comprehensive analysis for AI
+# Export comprehensive analysis for AI (summary detail level by default)
 ./archlens export . ai_compact
 
 # Save to file
 ./archlens export . ai_compact --output analysis.md
+
+# Request full verbosity via MCP (detail_level=full) to avoid token clipping
 ```
+
+Note: Validated problems are grouped by category with severity counts and top impacted components; optional hint is included when available.
 
 #### 📈 Architecture Diagram
    ```bash
@@ -115,9 +119,16 @@ cargo build --release
 
 ## 🤖 AI Integration
 
-### 🔌 MCP Server (Model Context Protocol)
+### 🔌 MCP Server (Model Context Protocol, Rust)
 
 ArchLens includes a powerful MCP server for seamless AI assistant integration:
+
+- Accepts absolute and relative paths ('.', './src') — resolved to absolute safely.
+- `detail_level`: summary (default) | standard | full. Compact by default to minimize tokens without losing signal.
+- CLI deep pipeline: `./archlens analyze . --deep` (scan → AST → capsules → graph → validators).
+- Rust MCP binary: `archlens-mcp` with STDIO JSON-RPC and HTTP endpoints (POST/SSE).
+  - STDIO methods: `tools/list`, `tools/call`, `resources/list`, `prompts/list`
+  - HTTP endpoints: `/export/ai_compact`, `/structure/get`, `/diagram/generate`, `/sse/refresh`, `/schemas/list`
 
 #### 🛠️ Setup with Claude Desktop
 
@@ -209,6 +220,14 @@ OPTIONS:
     --include-metrics       Include quality metrics
     --output <FILE>         Output file path
 ```
+
+### 🧠 AI Compact Sections
+- Summary: totals and average complexity
+- Problems (Heuristic): graph-level coupling/cohesion/complexity
+- Problems (Validated): validator warnings by category with top components and severity H/M/L
+- Cycles (Top): top cycles by length
+- Top Coupling: hub components by degree
+- Top Complexity Components: top-10 by complexity
 
 ### 🎨 Output Examples
 
@@ -493,3 +512,109 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 *Star ⭐ this repository if you find it helpful!*
 
 </div> 
+
+## 🔌 MCP Server (Rust) Quick Start
+
+- Build: `cargo build --release --bin archlens-mcp`
+- Transports:
+  - STDIO (JSON‑RPC): methods `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
+  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /export/ai_summary_json`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`, `POST /tools/list`, `POST /tools/call`, `POST /tools/call/stream`
+- detail_level: `summary` (default) | `standard` | `full` — controls verbosity and token budget
+- Env: `ARCHLENS_MCP_PORT` (HTTP port, default 5178), `ARCHLENS_TIMEOUT_MS` (per-request timeout, default 60000), `ARCHLENS_TEST_DELAY_MS` (artificial delay for tests), `ARCHLENS_CACHE_TTL_MS` (filesystem cache TTL, default 120000), thresholds for AI recommendations: `ARCHLENS_TH_COMPLEXITY_AVG` (default 8.0), `ARCHLENS_TH_COUPLING_INDEX` (0.7), `ARCHLENS_TH_COHESION_INDEX` (0.3), `ARCHLENS_TH_LAYER_IMBALANCE_PCT` (60), `ARCHLENS_TH_HIGH_SEV_CATS` (2)
+- Cache invalidation: cache keys now include a project fingerprint: `git rev-parse HEAD` (+ `-dirty` if workspace has uncommitted changes), or a fast FS fingerprint (file count, total bytes, latest mtime) when git is unavailable.
+- Cache LRU (optional): `ARCHLENS_CACHE_MAX_ENTRIES` (limit number of cache files), `ARCHLENS_CACHE_MAX_BYTES` (limit total cache size in bytes). Older entries are evicted first.
+
+Examples
+
+STDIO (send lines to stdin):
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary"}}}
+```
+
+HTTP (default port 5178):
+
+```bash
+# AI‑compact (summary)
+curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":".","detail_level":"summary"}'
+
+# Structure (standard)
+curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":".","detail_level":"standard"}'
+
+# Diagram (full)
+curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"full"}'
+
+# Schemas
+curl -s localhost:5178/schemas/list | jq
+```
+
+Cursor/Claude (STDIO) config snippet:
+
+Best-practice flow for AI agents:
+- Start with `export.ai_summary_json` (top_n=5) to get minimal facts
+- Use `/ai/recommend` (or `ai.recommend` via STDIO) with that JSON to get the next best calls
+- Drill down with `export.ai_compact` using `sections` and `top_n` (and `max_output_chars`)
+- Visualize with `graph.build` if cycles/coupling are present
+- Cache results with `etag` and reuse `use_cache` to minimize tokens
+
+```json
+{
+  "mcpServers": {
+    "archlens": {
+      "command": "/absolute/path/to/target/release/archlens-mcp",
+      "env": { "ARCHLENS_DEBUG": "false" }
+    }
+  }
+}
+``` 
+
+## 🧪 AI Recipes
+
+- Health Check (facts-only, minimal tokens)
+  - HTTP:
+    ```bash
+    # 1) Get structured facts
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' \
+      -d '{"project_path":".","top_n":5,"max_output_chars":20000}' | jq > summary.json
+
+    # 2) Ask for next best calls
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json summary.json)}" | jq
+    ```
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_summary_json","arguments":{"project_path":".","top_n":5}}}
+    {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai.recommend","arguments":{"project_path":".","json":<paste json here>}}}
+    ```
+
+- Cycles investigation
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"cycles\"}" | jq
+    # If cycles present → get graph
+    curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"summary"}'
+    ```
+
+- Refactor plan (high-severity problems)
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"plan\"}" | jq
+    # Then use prompt 'ai.refactor.plan' on the client side with the compact/problem sections as context
+    ```
+
+- Coupling audit (hubs & cycles)
+  - STDIO (compact, section-targeted):
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["cycles","top_coupling"],"top_n":10,"max_output_chars":18000,"use_cache":true}}}
+    ```
+
+- Complexity hotspots
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["top_complexity_components"],"top_n":10,"max_output_chars":16000}}}
+    ``` 

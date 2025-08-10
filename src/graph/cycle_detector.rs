@@ -17,13 +17,13 @@ impl CycleDetector {
             recursion_stack: HashSet::new(),
         }
     }
-    
+
     /// Finds cycles in the dependency graph
     pub fn find_cycles(&mut self, graph: &CapsuleGraph) -> Vec<Vec<Uuid>> {
         let mut cycles = Vec::new();
         self.visited.clear();
         self.recursion_stack.clear();
-        
+
         for capsule_id in graph.capsules.keys() {
             if !self.visited.contains(capsule_id) {
                 if let Some(cycle) = self.dfs_cycle_detection(*capsule_id, graph, &mut Vec::new()) {
@@ -31,16 +31,21 @@ impl CycleDetector {
                 }
             }
         }
-        
+
         cycles
     }
-    
+
     /// DFS-based cycle detection
-    fn dfs_cycle_detection(&mut self, capsule_id: Uuid, graph: &CapsuleGraph, path: &mut Vec<Uuid>) -> Option<Vec<Uuid>> {
+    fn dfs_cycle_detection(
+        &mut self,
+        capsule_id: Uuid,
+        graph: &CapsuleGraph,
+        path: &mut Vec<Uuid>,
+    ) -> Option<Vec<Uuid>> {
         self.visited.insert(capsule_id);
         self.recursion_stack.insert(capsule_id);
         path.push(capsule_id);
-        
+
         // Check all dependencies of current capsule
         if let Some(capsule) = graph.capsules.get(&capsule_id) {
             for &dependency_id in &capsule.dependencies {
@@ -59,12 +64,12 @@ impl CycleDetector {
                 }
             }
         }
-        
+
         path.pop();
         self.recursion_stack.remove(&capsule_id);
         None
     }
-    
+
     /// Add cycle warnings to graph
     pub fn add_cycle_warnings(&self, graph: &mut CapsuleGraph, cycles: &[Vec<Uuid>]) -> Result<()> {
         for cycle in cycles {
@@ -82,17 +87,17 @@ impl CycleDetector {
         }
         Ok(())
     }
-    
+
     /// Check if graph has any cycles
     pub fn has_cycles(&mut self, graph: &CapsuleGraph) -> bool {
         !self.find_cycles(graph).is_empty()
     }
-    
+
     /// Get strongly connected components
     pub fn get_strongly_connected_components(&mut self, graph: &CapsuleGraph) -> Vec<Vec<Uuid>> {
         let mut components = Vec::new();
         let mut visited = HashSet::new();
-        
+
         // First pass: collect finish times
         let mut finish_order = Vec::new();
         for &capsule_id in graph.capsules.keys() {
@@ -100,11 +105,11 @@ impl CycleDetector {
                 self.dfs_finish_time(capsule_id, graph, &mut visited, &mut finish_order);
             }
         }
-        
+
         // Second pass: find components in reverse finish order
         visited.clear();
         finish_order.reverse();
-        
+
         for &capsule_id in &finish_order {
             if !visited.contains(&capsule_id) {
                 let mut component = Vec::new();
@@ -114,14 +119,21 @@ impl CycleDetector {
                 }
             }
         }
-        
+
         components
     }
-    
+
     /// DFS for finish time calculation
-    fn dfs_finish_time(&self, capsule_id: Uuid, graph: &CapsuleGraph, visited: &mut HashSet<Uuid>, finish_order: &mut Vec<Uuid>) {
+    #[allow(clippy::only_used_in_recursion)]
+    fn dfs_finish_time(
+        &self,
+        capsule_id: Uuid,
+        graph: &CapsuleGraph,
+        visited: &mut HashSet<Uuid>,
+        finish_order: &mut Vec<Uuid>,
+    ) {
         visited.insert(capsule_id);
-        
+
         if let Some(capsule) = graph.capsules.get(&capsule_id) {
             for &dependency_id in &capsule.dependencies {
                 if !visited.contains(&dependency_id) {
@@ -129,15 +141,22 @@ impl CycleDetector {
                 }
             }
         }
-        
+
         finish_order.push(capsule_id);
     }
-    
+
     /// DFS for component collection
-    fn dfs_component(&self, capsule_id: Uuid, graph: &CapsuleGraph, visited: &mut HashSet<Uuid>, component: &mut Vec<Uuid>) {
+    #[allow(clippy::only_used_in_recursion)]
+    fn dfs_component(
+        &self,
+        capsule_id: Uuid,
+        graph: &CapsuleGraph,
+        visited: &mut HashSet<Uuid>,
+        component: &mut Vec<Uuid>,
+    ) {
         visited.insert(capsule_id);
         component.push(capsule_id);
-        
+
         // Follow reverse dependencies (dependents)
         if let Some(capsule) = graph.capsules.get(&capsule_id) {
             for &dependent_id in &capsule.dependents {
@@ -153,4 +172,4 @@ impl Default for CycleDetector {
     fn default() -> Self {
         Self::new()
     }
-} 
+}

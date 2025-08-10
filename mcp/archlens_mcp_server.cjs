@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// 🏗️ ARCHLENS MCP SERVER v2.0.0 - CRITICAL FIXES APPLIED
-// NO HARDCODED PATHS | NO SIDE EFFECTS | ABSOLUTE PATHS ONLY | UNIFIED LANGUAGE | WINDOWS FIXES
+// 🏗️ ARCHLENS MCP SERVER v1.0.2 - TOKEN-OPTIMIZED OUTPUT, RELATIVE PATHS SUPPORTED
+// NO HARDCODED PATHS | SAFE RELATIVE→ABSOLUTE RESOLUTION | UNIFIED LANGUAGE | WINDOWS FIXES
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
@@ -15,7 +15,7 @@ const iconv = require('iconv-lite');
 const CONFIG = {
   server: {
   name: "archlens-mcp-server",
-    version: "2.0.0"
+    version: "1.0.2"
   },
   binary: {
     name: process.env.ARCHLENS_BINARY || "archlens",
@@ -60,7 +60,8 @@ const CONFIG = {
     maxDepth: 20,
     maxFiles: 1000,
     scanDepth: 15,
-    maxFileSize: 1000000
+    maxFileSize: 1000000,
+    scanTimeout: 30000
   },
   textExtensions: [
     '.rs', '.ts', '.js', '.py', '.java', '.cpp', '.cc', '.cxx', '.c', 
@@ -69,6 +70,9 @@ const CONFIG = {
     '.json', '.yaml', '.yml', '.xml', '.md', '.txt'
   ]
 };
+
+// Cap output to avoid memory bloat and excessive tokens
+const MAX_OUTPUT_CHARS = 1_000_000; // ~1MB
 
 // 🔇 LOGGING WITHOUT SIDE EFFECTS  
 class Logger {
@@ -164,67 +168,42 @@ function getArchLensBinary() {
     `  4. Set ARCHLENS_BINARY=custom_name`);
 }
 
-// 🛡️ ABSOLUTE PATH RESOLUTION (NO RELATIVE PATHS)
+// 🛡️ ABSOLUTE PATH RESOLUTION (RELATIVE SUPPORTED)
 function resolveProjectPath(inputPath) {
   if (!inputPath || typeof inputPath !== 'string') {
     throw new Error('project_path is required and must be a string');
   }
-  
-  // STRICT VALIDATION: Reject common relative path patterns
-  if (inputPath === '.' || inputPath === '..' || 
+
+  // Support '.' and relative paths by resolving to absolute
+  if (inputPath === '.' || inputPath === '..' ||
       inputPath.startsWith('./') || inputPath.startsWith('../') ||
       inputPath.startsWith('.\\') || inputPath.startsWith('..\\')) {
-    throw new Error(`❌ RELATIVE PATHS NOT ALLOWED
-
-Received: "${inputPath}"
-
-MCP requires ABSOLUTE paths only. Use full directory paths like:
-- Linux/Mac: "/home/user/project" or "/absolute/path/to/project"  
-- Windows: "C:\\Users\\User\\Project" or "D:\\absolute\\path\\to\\project"
-
-❌ NOT ALLOWED: ".", "..", "./src", "../project", ".\\src"
-✅ REQUIRED: Full absolute paths only
-
-Please provide the complete absolute path to your project directory.`);
+    const resolved = path.resolve(CONFIG.paths.workingDirectory, inputPath);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Path does not exist: ${resolved}`);
+    }
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
+    return resolved;
   }
-  
+
   let resolvedPath;
-  
-  // ALWAYS resolve to absolute path - no relative paths allowed in MCP
   if (path.isAbsolute(inputPath)) {
     resolvedPath = path.normalize(inputPath);
-    logger.debug(`Using absolute path: ${resolvedPath}`);
   } else {
-    // This should never happen due to validation above, but keep as fallback
-    throw new Error(`❌ Path "${inputPath}" is not absolute. MCP requires full absolute paths only.`);
+    resolvedPath = path.resolve(CONFIG.paths.workingDirectory, inputPath);
   }
-  
-  // Validate path exists and is accessible
-  try {
-    if (!fs.existsSync(resolvedPath)) {
-      throw new Error(`Path does not exist: ${resolvedPath}`);
-    }
-    
-    const stat = fs.statSync(resolvedPath);
-    if (!stat.isDirectory()) {
-      throw new Error(`Path is not a directory: ${resolvedPath}`);
-    }
-    
-    // Test read access
-    fs.accessSync(resolvedPath, fs.constants.R_OK);
-    
-  } catch (error) {
-    if (error.code === 'EACCES' || error.code === 'EPERM') {
-      throw new Error(`Access denied to path: ${resolvedPath}\n` +
-        `🔧 Windows Solutions:\n` +
-        `  • Run as Administrator\n` +
-        `  • Check folder permissions\n` +
-        `  • Disable antivirus temporarily\n` +
-        `  • Ensure files are not in use`);
-    }
-    throw error;
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Path does not exist: ${resolvedPath}`);
   }
-  
+  const stat = fs.statSync(resolvedPath);
+  if (!stat.isDirectory()) {
+    throw new Error(`Path is not a directory: ${resolvedPath}`);
+  }
+  fs.accessSync(resolvedPath, fs.constants.R_OK);
   return resolvedPath;
 }
 
@@ -410,6 +389,10 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '');
       }
       stdout += str;
+      if (stdout.length > MAX_OUTPUT_CHARS) {
+        // Keep tail to preserve latest info
+        stdout = stdout.slice(stdout.length - MAX_OUTPUT_CHARS);
+      }
       });
       
       child.stderr.on('data', (data) => {
@@ -445,6 +428,9 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '?');
       }
       stderr += str;
+      if (stderr.length > MAX_OUTPUT_CHARS) {
+        stderr = stderr.slice(stderr.length - MAX_OUTPUT_CHARS);
+      }
       });
       
       child.on('close', (code) => {
@@ -518,29 +504,21 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
 }
     
 // 🎯 UNIFIED RESPONSE CREATION
-function createMCPResponse(toolName, result, error = null, projectPath = null) {
+function createMCPResponse(toolName, result, error = null, projectPath = null, detailLevel = 'summary') {
   if (error) {
     return {
       content: [{
         type: "text",
-        text: `❌ ERROR ${getToolDisplayName(toolName)}
-
-Failed to ${getToolAction(toolName)}: ${projectPath || 'unknown path'}
-
-**Reason:** ${error.message.replace(/[^\x00-\x7F]/g, '?')}
-
-**Project path:** ${projectPath || 'n/a'}
-**Error time:** ${new Date().toLocaleString('en-US')}
-**Platform:** ${os.platform()} ${os.release()}`
+        text: `❌ ${getToolDisplayName(toolName)}\n\nReason: ${error.message.replace(/[^\x00-\x7F]/g, '?')}\nPath: ${projectPath || 'n/a'}\nTime: ${new Date().toLocaleString('en-US')}`
       }],
       isError: true
     };
   }
-  
-    return {
-      content: [{
-        type: "text",
-      text: formatToolResult(toolName, result, projectPath)
+  // Minimized, high-signal response
+  return {
+    content: [{
+      type: "text",
+      text: formatToolResult(toolName, result, projectPath, detailLevel)
     }]
   };
 }
@@ -567,118 +545,64 @@ function getToolAction(toolName) {
 
 // 📊 RESULT FORMATTING
 class ResponseFormatter {
-  static formatAnalysisResult(result, projectPath) {
+  static formatAnalysisResult(result, projectPath, detailLevel = 'summary') {
     const data = typeof result === 'string' ? JSON.parse(result) : result;
-    
-    return `# 🔍 PROJECT ANALYSIS BRIEF
-
-**Path:** ${projectPath}
-**Analysis performed:** ${new Date().toLocaleString('en-US')}
-
-## 📊 Key metrics
-- **Total files:** ${data.total_files || 'n/a'}
-- **Lines of code:** ${data.total_lines || 'n/a'}
-- **Scan date:** ${data.scanned_at ? new Date(data.scanned_at).toLocaleString('en-US') : 'n/a'}
-
-## 🗂️ File distribution
-${data.file_types ? Object.entries(data.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .slice(0, 10)
-  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
-  .join('\n') : 'Data unavailable'}
-
-## 📈 Architectural assessment
-${this.getArchitecturalRisk(data.total_files)}
-
-## 🎯 Deep analysis capabilities
-Use \`export_ai_compact\` to discover:
-- **Code Smells:** long methods, magic numbers, code duplication
-- **SOLID principles:** violations of single responsibility, open/closed
-- **Architectural antipatterns:** God Objects, tight coupling, circular dependencies
-- **Quality metrics:** cyclomatic complexity, technical debt
-
-*This is a preliminary assessment. Use specialized tools for detailed analysis.*`;
-  }
-
-  static formatExportResult(result, projectPath) {
-    if (result.output && typeof result.output === 'string' && result.output.trim().length > 0) {
-      return result.output; // AI Compact already formatted
+    if (detailLevel === 'full') {
+      return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
     }
-    
-    return `❌ ARCHITECTURE ANALYSIS ERROR
-    
-Failed to perform AI Compact export for project: ${projectPath}
-
-**Reason:** ${result.message || 'Unknown error'}
-**Details:** ${result.output || result.stderr || 'No details'}
-
-**What AI Compact should have analyzed:**
-- Code Smells (20+ types): long methods, magic numbers, code duplication
-- SOLID principles: single responsibility, open/closed, Liskov substitution
-- Architectural antipatterns: God Objects, tight coupling, circular dependencies
-- Quality metrics: cyclomatic complexity, cognitive complexity, maintainability index
-
-**Path:** ${projectPath}
-**Error time:** ${new Date().toLocaleString('en-US')}`;
+    if (detailLevel === 'standard') {
+      return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Top: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,5).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+    }
+    // summary (default)
+    return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Top: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,3).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
   }
-
-  static formatStructureResult(result, projectPath) {
-    const data = typeof result === 'string' ? JSON.parse(result) : result;
-    
-    return `# 📁 PROJECT STRUCTURE OVERVIEW
-
-**Path:** ${projectPath}
-**Analysis performed:** ${new Date().toLocaleString('en-US')}
-
-## 📊 General statistics
-- **Total files:** ${data.total_files || 'n/a'}
-- **Total lines:** ${data.total_lines || 'n/a'}
-- **Files shown:** ${data.files ? Math.min(data.files.length, data.total_files || 0) : 'n/a'} (limit: ${CONFIG.limits.maxFiles})
-
-## 🗂️ File types
-${data.file_types ? Object.entries(data.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
-  .join('\n') : 'Data unavailable'}
-
-## 🏗️ Architectural layers
-${data.layers ? data.layers.map(layer => `- **${layer}**`).join('\n') : '- Layers not identified'}
-
-## 📄 Key files (top 15)
-${data.files ? data.files.slice(0, 15).map(file => 
-  `- \`${file.path}\` (${file.extension}, ${(file.size/1024).toFixed(1)}KB)`
-).join('\n') + 
-(data.files.length > 15 ? `\n\n... and ${data.files.length - 15} more file(s)` : '') : 'Files not found'}
-
-*Structure overview complete. Use specialized tools for detailed problem analysis.*`;
+  static formatExportResult(result, projectPath, detailLevel = 'summary') {
+    let content = '';
+    if (typeof result === 'string') {
+      content = result;
+    } else if (result && result.output) {
+      content = result.output;
+    } else {
+      return `❌ ARCHITECTURE ANALYSIS ERROR\nPath: ${projectPath}`;
+    }
+    if (detailLevel === 'full') {
+      return clampText(content, MAX_OUTPUT_CHARS);
+    }
+    // Remove large code blocks for summary/standard
+    const stripped = stripCodeBlocks(content);
+    if (detailLevel === 'standard') {
+      return clampText(stripped, Math.min(SUMMARY_LIMIT_CHARS * 2, MAX_OUTPUT_CHARS));
+    }
+    // summary
+    return clampText(stripped, SUMMARY_LIMIT_CHARS);
   }
-
-  static formatDiagramResult(result, projectPath) {
+  static formatStructureResult(result, projectPath, detailLevel = 'summary') {
+    const data = typeof result === 'string' ? JSON.parse(result) : (result.structure ? result.structure : result);
+    if (detailLevel === 'full') {
+      const files = data.files ? data.files.slice(0, 25).map(f => `- \`${f.path}\` (${f.extension}, ${(f.size/1024).toFixed(1)}KB)`).join('\n') : '';
+      return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}\n${files}`;
+    }
+    if (detailLevel === 'standard') {
+      return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,10).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+    }
+    // summary
+    return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,5).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+  }
+  static formatDiagramResult(result, projectPath, detailLevel = 'summary') {
     if (result.diagram && typeof result.diagram === 'string') {
-      return `# 📊 ARCHITECTURAL DIAGRAM
-
-**Project:** ${projectPath}
-**Type:** ${result.diagram_type || 'unknown'}
-**Created:** ${new Date().toISOString()}
-
-## Mermaid Diagram
-
-\`\`\`mermaid
-${result.diagram}
-\`\`\`
-
-*Generated by ArchLens for AI analysis*`;
+      let diagram = result.diagram;
+      // Clamp diagram to avoid huge payloads
+      if (detailLevel === 'summary') {
+        diagram = clampText(diagram, 15000);
+      } else if (detailLevel === 'standard') {
+        diagram = clampText(diagram, 40000);
+      } else {
+        diagram = clampText(diagram, 120000);
+      }
+      const header = `# 📊 DIAGRAM\nPath: ${projectPath}\nType: ${result.diagram_type || 'mermaid'}`;
+      return `${header}\n\n\`\`\`mermaid\n${diagram}\n\`\`\``;
     }
-    
-    return `❌ DIAGRAM GENERATION ERROR
-    
-Failed to create diagram for project: ${projectPath}
-
-**Type:** ${result.diagram_type || 'unknown'}
-**Reason:** ${result.message || 'Unknown error'}
-
-**Path:** ${projectPath}
-**Error time:** ${new Date().toLocaleString('en-US')}`;
+    return `❌ DIAGRAM GENERATION ERROR\nPath: ${projectPath}`;
   }
 
   static getArchitecturalRisk(totalFiles) {
@@ -701,24 +625,39 @@ Failed to create diagram for project: ${projectPath}
   }
 }
 
-function formatToolResult(toolName, result, projectPath) {
+function formatToolResult(toolName, result, projectPath, detailLevel = 'summary') {
   switch (toolName) {
     case 'analyze_project':
-      return ResponseFormatter.formatAnalysisResult(result, projectPath);
+      return ResponseFormatter.formatAnalysisResult(result, projectPath, detailLevel);
     case 'export_ai_compact': 
-      return ResponseFormatter.formatExportResult(result, projectPath);
+      return ResponseFormatter.formatExportResult(result, projectPath, detailLevel);
     case 'get_project_structure':
-      return ResponseFormatter.formatStructureResult(result, projectPath);
+      return ResponseFormatter.formatStructureResult(result, projectPath, detailLevel);
     case 'generate_diagram':
-      return ResponseFormatter.formatDiagramResult(result, projectPath);
+      return ResponseFormatter.formatDiagramResult(result, projectPath, detailLevel);
     default:
       return JSON.stringify(result, null, 2);
   }
 }
 
+// Summarization helpers
+const SUMMARY_LIMIT_CHARS = 30000; // ~30KB per message
+typeof global !== 'undefined' && (global.SUMMARY_LIMIT_CHARS = SUMMARY_LIMIT_CHARS);
+
+function stripCodeBlocks(md) {
+  try {
+    return md.replace(/```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n');
+  } catch { return md; }
+}
+
+function clampText(text, maxChars) {
+  if (!text || text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n... (truncated)";
+}
+
 // 📊 SIMPLIFIED HANDLERS
 async function handleAnalyzeProject(args) {
-  const { project_path } = args;
+  const { project_path, detail_level = 'summary', deep = false } = args;
   
   try {
     if (!project_path) {
@@ -733,8 +672,13 @@ async function handleAnalyzeProject(args) {
     // 🔐 SMART MODE: TRY NORMAL EXECUTION FIRST, CHECK ADMIN ONLY IF NEEDED
     // Rust binary gracefully handles access denied errors, so we don't need admin precheck
     
-    const result = await executeArchlensCommand('analyze', resolvedPath);
-    return createMCPResponse('analyze_project', result, null, resolvedPath);
+    let result;
+    if (deep) {
+      result = await executeArchlensCommand('analyze', resolvedPath, ['--deep']);
+    } else {
+      result = await executeArchlensCommand('analyze', resolvedPath);
+    }
+    return createMCPResponse('analyze_project', result, null, resolvedPath, detail_level);
     
   } catch (error) {
     // Smart error handling: most access errors are handled gracefully by Rust binary
@@ -775,7 +719,7 @@ async function handleAnalyzeProject(args) {
     }
     
     // For non-permission errors, return standard error response
-    return createMCPResponse('analyze_project', null, error, project_path);
+    return createMCPResponse('analyze_project', null, error, project_path, detail_level);
   }
 }
 
@@ -810,32 +754,11 @@ async function createLimitedAnalysis(projectPath) {
 }
 
 async function handleExportAICompact(args) {
-  const { project_path, output_file } = args;
+  const { project_path, output_file, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
       throw new Error("project_path is required");
-    }
-    
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -846,85 +769,43 @@ Please provide the complete absolute path to your project directory.`
     
     const result = await executeArchlensCommand('export', resolvedPath, additionalArgs);
     
-    return createMCPResponse('export_ai_compact', result, null, resolvedPath);
+    return createMCPResponse('export_ai_compact', result, null, resolvedPath, detail_level);
     
   } catch (error) {
-    return createMCPResponse('export_ai_compact', null, error, project_path);
+    return createMCPResponse('export_ai_compact', null, error, project_path, detail_level);
   }
 }
 
 async function handleGetProjectStructure(args) {
-  const { project_path } = args;
+  const { project_path, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
       throw new Error("project_path is required");
-    }
-    
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
     
     try {
       const result = await executeArchlensCommand('structure', resolvedPath);
-      return createMCPResponse('get_project_structure', result, null, resolvedPath);
+      return createMCPResponse('get_project_structure', result, null, resolvedPath, detail_level);
     } catch (binaryError) {
       // Fallback: manual structure scan
       const fallbackResult = createManualStructure(resolvedPath);
-      return createMCPResponse('get_project_structure', fallbackResult, null, resolvedPath);
+      return createMCPResponse('get_project_structure', fallbackResult, null, resolvedPath, detail_level);
     }
     
   } catch (error) {
-    return createMCPResponse('get_project_structure', null, error, project_path);
+    return createMCPResponse('get_project_structure', null, error, project_path, detail_level);
   }
 }
 
 async function handleGenerateDiagram(args) {
-  const { project_path, diagram_type = "mermaid", output_file } = args;
+  const { project_path, diagram_type = "mermaid", output_file, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
       throw new Error("project_path is required");
-    }
-    
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -950,7 +831,7 @@ Please provide the complete absolute path to your project directory.`
           size: diagramContent.length
         };
         
-        return createMCPResponse('generate_diagram', result, null, resolvedPath);
+        return createMCPResponse('generate_diagram', result, null, resolvedPath, detail_level);
         } else {
         throw new Error(`Diagram file not created: ${tempFile}`);
         }
@@ -959,7 +840,7 @@ Please provide the complete absolute path to your project directory.`
     }
     
   } catch (error) {
-    return createMCPResponse('generate_diagram', null, error, project_path);
+    return createMCPResponse('generate_diagram', null, error, project_path, detail_level);
   }
 }
 
@@ -973,30 +854,36 @@ function createManualStructure(projectPath) {
     files: []
   };
   
+  const start = Date.now();
+  const deadline = start + (CONFIG.limits.scanTimeout || 30000);
+  
   try {
     const scanDirectory = (dir, depth = 0) => {
+      if (Date.now() > deadline) return; // time budget guard
       if (depth > CONFIG.limits.scanDepth) return;
+      if (structure.files.length >= CONFIG.limits.maxFiles) return;
       
       const items = fs.readdirSync(dir);
       
       for (const item of items) {
+        if (Date.now() > deadline) return;
+        if (structure.files.length >= CONFIG.limits.maxFiles) return;
         const fullPath = path.join(dir, item);
         
         try {
-        const stat = fs.statSync(fullPath);
-        
-        if (stat.isDirectory()) {
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
             const skipDirs = ['node_modules', '.git', 'target', 'dist', 'build', '.next', '.nuxt'];
             if (!skipDirs.includes(item) && !item.startsWith('.')) {
-            scanDirectory(fullPath, depth + 1);
-          }
-        } else {
-          const ext = path.extname(item).toLowerCase();
-          const relativePath = path.relative(path.resolve(projectPath), fullPath);
-          
-          structure.total_files++;
-          structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
-          
+              scanDirectory(fullPath, depth + 1);
+            }
+          } else {
+            const ext = path.extname(item).toLowerCase();
+            const relativePath = path.relative(path.resolve(projectPath), fullPath);
+            
+            structure.total_files++;
+            structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
+            
             if (structure.files.length < CONFIG.limits.maxFiles) {
               let lineCount = 0;
               try {
@@ -1009,16 +896,9 @@ function createManualStructure(projectPath) {
                 lineCount = 0;
               }
               
-            structure.files.push({
-              path: relativePath,
-              name: item,
-              extension: ext,
-                size: stat.size,
-                lines: lineCount
-            });
-              
+              structure.files.push({ path: relativePath, name: item, extension: ext, size: stat.size, lines: lineCount });
               structure.total_lines += lineCount;
-          }
+            }
           }
         } catch (statError) {
           logger.debug(`File access error ${fullPath}: ${statError.message}`);
@@ -1028,7 +908,6 @@ function createManualStructure(projectPath) {
     
     scanDirectory(projectPath);
     
-    // Determine layers by folder structure
     const commonLayers = ['src', 'lib', 'components', 'utils', 'api', 'core', 'ui', 'services', 'models', 'views', 'controllers'];
     structure.layers = commonLayers.filter(layer => {
       return fs.existsSync(path.join(projectPath, layer));
@@ -1043,7 +922,8 @@ function createManualStructure(projectPath) {
     structure,
     project_path: projectPath,
     scanned_at: new Date().toISOString(),
-    method: "manual_scan"
+    method: "manual_scan",
+    duration_ms: Date.now() - start
   };
 }
 
@@ -1064,115 +944,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          output_file: {
-            description: "Path to save the result (optional)",
-            type: "string"
-          },
-          focus_critical_only: {
-            description: "Show only critical problems: God Objects, circular dependencies, high complexity, SOLID violations",
-            type: "boolean"
-          },
-          include_diff_analysis: {
-            description: "Include comparison with previous versions for degradation analysis",
-            type: "boolean"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path to the project directory", type: "string" },
+          output_file: { description: "Path to save the result (optional)", type: "string" },
+          focus_critical_only: { description: "Show only critical problems", type: "boolean" },
+          include_diff_analysis: { description: "Include comparison with previous versions", type: "boolean" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
-            {
+    {
       name: "analyze_project",
-      description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment of problems: project size, file distribution, architectural risk assessment (small/medium/large), recommendations for deep analysis via export_ai_compact.",
+      description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          verbose: {
-            description: "Detailed output with additional metrics and warnings",
-            type: "boolean"
-          },
-          analyze_dependencies: {
-            description: "Analyze module dependencies to identify circular dependencies",
-            type: "boolean"
-          },
-          extract_comments: {
-            description: "Extract comments and analyze documentation quality",
-            type: "boolean"
-          },
-          generate_summaries: {
-            description: "Generate brief descriptions of components with potential problems",
-            type: "boolean"
-          },
-          include_patterns: {
-            description: "File patterns to include (e.g., ['**/*.rs', '**/*.ts'])",
-            type: "array",
-            items: { type: "string" }
-          },
-          exclude_patterns: {
-            description: "File patterns to exclude",
-            type: "array",
-            items: { type: "string" }
-          },
-          max_depth: {
-            description: "Maximum directory depth for scanning",
-            type: "integer"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          verbose: { description: "Detailed output", type: "boolean" },
+          analyze_dependencies: { description: "Analyze module dependencies", type: "boolean" },
+          extract_comments: { description: "Analyze documentation quality", type: "boolean" },
+          generate_summaries: { description: "Generate brief descriptions", type: "boolean" },
+          include_patterns: { description: "File include patterns", type: "array", items: { type: "string" } },
+          exclude_patterns: { description: "File exclude patterns", type: "array", items: { type: "string" } },
+          max_depth: { description: "Max directory depth", type: "integer" },
+          deep: { description: "Use full analysis pipeline (CLI analyze --deep)", type: "boolean" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
     {
       name: "generate_diagram",
-      description: "📈 DIAGRAM GENERATION - Creates an architectural diagram with visualization of problems: dependencies between components, problematic connections (circular dependencies marked in red), complexity metrics, architectural layers. For Mermaid returns ready code.",
+      description: "📈 DIAGRAM GENERATION - Creates an architectural diagram.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          diagram_type: {
-            description: "Diagram type: mermaid (default), svg, dot",
-            type: "string",
-            enum: ["mermaid", "svg", "dot"]
-          },
-          include_metrics: {
-            description: "Include quality metrics in the diagram: cyclomatic complexity, coupling, problematic components",
-            type: "boolean"
-          },
-          output_file: {
-            description: "Path to save the diagram (optional)",
-            type: "string"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          diagram_type: { description: "mermaid (default), svg, dot", type: "string", enum: ["mermaid", "svg", "dot"] },
+          include_metrics: { description: "Include quality metrics (rendered by caller)", type: "boolean" },
+          output_file: { description: "Path to save the diagram (optional)", type: "string" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
     {
       name: "get_project_structure",
-      description: "📁 PROJECT STRUCTURE - Hierarchical structure with structural problem detection: incorrect layer organization, mismatch with architectural patterns, files candidates for refactoring (large sizes), metrics by file types.",
+      description: "📁 PROJECT STRUCTURE - Hierarchical structure with structural problem detection.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          show_metrics: {
-            description: "Include file metrics: size, lines of code, complexity assessment",
-            type: "boolean"
-          },
-          max_files: {
-            description: "Maximum number of files in output (default 1000)",
-            type: "integer"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          show_metrics: { description: "Include file metrics", type: "boolean" },
+          max_files: { description: "Maximum number of files in output (default 1000)", type: "integer" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
@@ -1206,13 +1031,40 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  logger.info("🏗️ ArchLens MCP Server v2.0.0 started - CRITICAL FIXES APPLIED");
-  logger.info("✅ NO HARDCODED PATHS | NO SIDE EFFECTS | PROPER '.' SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES");
+  logger.info("🏗️ ArchLens MCP Server v1.0.2 started - RELATIVE PATHS SUPPORTED");
+  logger.info("✅ NO HARDCODED PATHS | SAFE '.' SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES");
   
   process.stdin.resume();
 }
 
-main().catch(error => {
-  logger.error(`Server startup failed: ${error.message}`);
-  process.exit(1);
-}); 
+if (require.main === module) {
+  main().catch(error => {
+    logger.error(`Server startup failed: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  CONFIG,
+  Logger,
+  getArchLensBinary,
+  resolveProjectPath,
+  getWindowsExecutionOptions,
+  checkWindowsAdminRights,
+  tryAutoElevation,
+  createAdminElevationInstructions,
+  executeArchlensCommand,
+  createMCPResponse,
+  getToolDisplayName,
+  getToolAction,
+  ResponseFormatter,
+  formatToolResult,
+  stripCodeBlocks,
+  clampText,
+  handleAnalyzeProject,
+  handleExportAICompact,
+  handleGetProjectStructure,
+  handleGenerateDiagram,
+  createManualStructure,
+  server
+}; 

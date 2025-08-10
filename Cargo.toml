@@ -23,24 +23,31 @@ exclude = [
 name = "archlens"
 path = "src/main.rs"
 
+# New MCP server binary (Rust)
+[[bin]]
+name = "archlens-mcp"
+path = "src/bin/archlens_mcp.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.0", features = [] }
+# behind feature to avoid GUI deps in headless tests
+ tauri-build = { version = "1.0", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "1.7", features = ["dialog-open", "dialog-save", "fs-copy-file", "fs-create-dir", "fs-exists", "fs-read-dir", "fs-read-file", "fs-remove-dir", "fs-remove-file", "fs-rename-file", "fs-write-file", "shell-open"] }
+# GUI deps behind feature `gui`
+ tauri = { version = "1.7", features = ["dialog-open", "dialog-save", "fs-copy-file", "fs-create-dir", "fs-exists", "fs-read-dir", "fs-read-file", "fs-remove-dir", "fs-remove-file", "fs-rename-file", "fs-write-file", "shell-open"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
-# #ДОДЕЛАТЬ: Вернуть tree-sitter после решения проблем линковки
-# tree-sitter = "0.20"
-# tree-sitter-rust = "0.20"
-# tree-sitter-javascript = "0.20"
-# tree-sitter-typescript = "0.20"
-# tree-sitter-python = "0.20"
+# Optional tree-sitter stack (enabled via feature `tree_sitter`)
+tree-sitter = { version = "0.20", optional = true }
+tree-sitter-rust = { version = "0.20", optional = true }
+tree-sitter-javascript = { version = "0.20", optional = true }
+tree-sitter-typescript = { version = "0.20", optional = true }
+tree-sitter-python = { version = "0.20", optional = true }
 thiserror = "1.0"
 anyhow = "1.0"
 walkdir = "2.4"
@@ -50,12 +57,26 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 ignore = "0.4"
 tokio = { version = "1.0", features = ["full"] }
+# New deps for MCP server
+schemars = { version = "0.8", features = ["preserve_order"] }
+axum = { version = "0.7", features = ["macros", "json", "http1", "http2"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
 
 [features]
-# this feature is used for production builds or when `devPath` points to the filesystem
-# DO NOT REMOVE!!
-custom-protocol = ["tauri/custom-protocol"]
-default = []
+# default headless (no GUI/tauri) to keep CI/tests slim
+ default = []
+ gui = ["dep:tauri"]
+ tauri_build = ["dep:tauri-build"]
+ custom-protocol = ["tauri/custom-protocol"]
+ # optional feature gate for tree-sitter based parsing (future work)
+ tree_sitter = [
+  "dep:tree-sitter",
+  "dep:tree-sitter-rust",
+  "dep:tree-sitter-javascript",
+  "dep:tree-sitter-typescript",
+  "dep:tree-sitter-python"
+]
 
 [profile.release]
 opt-level = 3
@@ -63,3 +84,8 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }

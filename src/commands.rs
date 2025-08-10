@@ -1,22 +1,45 @@
-use std::path::{Path, PathBuf};
-use tauri::State;
-use std::sync::Arc;
-use std::sync::Mutex;
-use crate::types::*;
-use crate::file_scanner::FileScanner;
-use crate::parser_ast::ParserAST;
-use crate::metadata_extractor::MetadataExtractor;
-use crate::capsule_constructor::CapsuleConstructor;
-use crate::capsule_graph_builder::CapsuleGraphBuilder;
-use crate::capsule_enricher::CapsuleEnricher;
-use crate::validator_optimizer::ValidatorOptimizer;
-use crate::diff_analyzer::DiffAnalyzer;
+#[cfg(feature = "gui")]
 use crate::advanced_metrics::AdvancedMetricsCalculator;
+#[cfg(feature = "gui")]
+use crate::capsule_constructor::CapsuleConstructor;
+#[cfg(feature = "gui")]
+use crate::capsule_enricher::CapsuleEnricher;
+#[cfg(feature = "gui")]
+use crate::capsule_graph_builder::CapsuleGraphBuilder;
+#[cfg(feature = "gui")]
+use crate::diff_analyzer::DiffAnalyzer;
+#[cfg(feature = "gui")]
 use crate::exporter::Exporter;
-use std::fs;
-use uuid::Uuid;
+#[cfg(feature = "gui")]
+use crate::file_scanner::FileScanner;
+#[cfg(feature = "gui")]
+use crate::metadata_extractor::MetadataExtractor;
+#[cfg(feature = "gui")]
+use crate::parser_ast::ParserAST;
+#[cfg(feature = "gui")]
+use crate::types::*;
+#[cfg(feature = "gui")]
+use crate::types::{AnalysisError, AnalysisResult, CapsuleGraph};
+#[cfg(feature = "gui")]
+use crate::types::{AnalysisResult as _AnalysisResult, CapsuleGraph as _CapsuleGraph};
+#[cfg(feature = "gui")]
+use crate::validator_optimizer::ValidatorOptimizer;
+#[cfg(feature = "gui")]
 use std::collections::HashMap;
+#[cfg(feature = "gui")]
+use std::fs;
+#[cfg(feature = "gui")]
+use std::path::{Path, PathBuf};
+#[cfg(feature = "gui")]
+use std::sync::Arc;
+#[cfg(feature = "gui")]
+use std::sync::Mutex;
+#[cfg(feature = "gui")]
+use tauri::State;
+#[cfg(feature = "gui")]
+use uuid::Uuid;
 
+#[cfg(feature = "gui")]
 impl From<AnalysisError> for String {
     fn from(error: AnalysisError) -> Self {
         match error {
@@ -31,11 +54,13 @@ impl From<AnalysisError> for String {
 }
 
 // Состояние приложения
+#[cfg(feature = "gui")]
 pub struct AppState {
     pub last_analysis: Arc<Mutex<Option<AnalysisResult>>>,
     pub previous_analysis: Arc<Mutex<Option<CapsuleGraph>>>,
 }
 
+#[cfg(feature = "gui")]
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -45,6 +70,7 @@ impl Default for AppState {
     }
 }
 
+#[cfg(feature = "gui")]
 #[derive(serde::Serialize)]
 pub struct ProjectStructure {
     pub total_files: usize,
@@ -54,6 +80,7 @@ pub struct ProjectStructure {
 }
 
 /// Расширенная команда анализа проекта с полным пайплайном
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn analyze_project_advanced(
     project_path: String,
@@ -62,8 +89,17 @@ pub async fn analyze_project_advanced(
 ) -> std::result::Result<String, String> {
     let config = AnalysisConfig {
         project_path: PathBuf::from(project_path.clone()),
-        include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
-        exclude_patterns: vec!["**/target/**".to_string(), "**/node_modules/**".to_string(), "**/.git/**".to_string()],
+        include_patterns: vec![
+            "**/*.rs".to_string(),
+            "**/*.ts".to_string(),
+            "**/*.js".to_string(),
+            "**/*.py".to_string(),
+        ],
+        exclude_patterns: vec![
+            "**/target/**".to_string(),
+            "**/node_modules/**".to_string(),
+            "**/.git/**".to_string(),
+        ],
         max_depth: Some(10),
         follow_symlinks: false,
         analyze_dependencies: true,
@@ -71,7 +107,12 @@ pub async fn analyze_project_advanced(
         parse_tests: false,
         experimental_features: false,
         generate_summaries: true,
-        languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript, FileType::Python],
+        languages: vec![
+            FileType::Rust,
+            FileType::TypeScript,
+            FileType::JavaScript,
+            FileType::Python,
+        ],
     };
 
     // Шаг 1: Сканирование файлов
@@ -85,7 +126,7 @@ pub async fn analyze_project_advanced(
     // Шаг 2: Парсинг AST
     let mut parser = ParserAST::new()?;
     let mut all_nodes = Vec::new();
-    
+
     for file in &files {
         if let Ok(content) = fs::read_to_string(&file.path) {
             match parser.parse_file(&file.path, &content, &file.file_type) {
@@ -98,30 +139,35 @@ pub async fn analyze_project_advanced(
     // Шаг 3: Извлечение метаданных
     let metadata_extractor = MetadataExtractor::new();
     let mut metadata_list = Vec::new();
-    
+
     for node in &all_nodes {
-        let metadata = metadata_extractor.extract_metadata(node, &std::path::PathBuf::new())
+        let metadata = metadata_extractor
+            .extract_metadata(node, &std::path::PathBuf::new())
             .map_err(|e| format!("Ошибка извлечения метаданных: {e}"))?;
         metadata_list.push(metadata);
     }
 
     // Шаг 4: Создание капсул
     let capsule_constructor = CapsuleConstructor::new();
-    let capsules = capsule_constructor.create_capsules(&all_nodes, &PathBuf::from(project_path.clone()))?;
+    let capsules =
+        capsule_constructor.create_capsules(&all_nodes, &PathBuf::from(project_path.clone()))?;
 
     // Шаг 5: Построение графа
     let mut graph_builder = CapsuleGraphBuilder::new();
-    let graph = graph_builder.build_graph(&capsules)
+    let graph = graph_builder
+        .build_graph(&capsules)
         .map_err(|e| format!("Ошибка построения графа: {e}"))?;
 
     // Шаг 6: Обогащение семантикой
     let enricher = CapsuleEnricher::new();
-    let enriched_graph = enricher.enrich_graph(&graph)
+    let enriched_graph = enricher
+        .enrich_graph(&graph)
         .map_err(|e| format!("Ошибка обогащения: {e}"))?;
 
     // Шаг 7: Валидация и оптимизация
     let validator = ValidatorOptimizer::new();
-    let validated_graph = validator.validate_and_optimize(&enriched_graph)
+    let validated_graph = validator
+        .validate_and_optimize(&enriched_graph)
         .map_err(|e| format!("Ошибка валидации: {e}"))?;
 
     // Шаг 8: Diff-анализ (если есть предыдущая версия)
@@ -138,7 +184,7 @@ pub async fn analyze_project_advanced(
     // Шаг 9: Расчет продвинутых метрик
     let metrics_calculator = AdvancedMetricsCalculator::new();
     let mut advanced_metrics = Vec::new();
-    
+
     for capsule in validated_graph.capsules.values() {
         if let Ok(content) = fs::read_to_string(&capsule.file_path) {
             if let Ok(metrics) = metrics_calculator.calculate_metrics(capsule, &content) {
@@ -162,13 +208,13 @@ pub async fn analyze_project_advanced(
             "Рассмотрите рекомендации по SOLID принципам".to_string(),
         ],
         export_formats: vec![
-            ExportFormat::JSON, 
+            ExportFormat::JSON,
             ExportFormat::YAML,
-            ExportFormat::Mermaid, 
-            ExportFormat::DOT, 
+            ExportFormat::Mermaid,
+            ExportFormat::DOT,
             ExportFormat::SVG,
             ExportFormat::InteractiveHTML,
-            ExportFormat::AICompact
+            ExportFormat::AICompact,
         ],
     };
 
@@ -179,17 +225,18 @@ pub async fn analyze_project_advanced(
     // Возвращаем JSON результат
     let json_result = serde_json::to_string(&analysis_result)
         .map_err(|e| format!("Ошибка сериализации JSON: {e}"))?;
-    
+
     Ok(json_result)
 }
 
 /// Команда запуска интеграционных тестов
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn run_integration_tests(
     project_path: Option<String>,
 ) -> std::result::Result<String, String> {
     let test_path = project_path.map(PathBuf::from);
-    
+
     // Временно отключаем интеграционные тесты
     // match // crate::integration_tests::run_integration_tests(test_path) {
     //     Ok(results) => {
@@ -201,23 +248,25 @@ pub async fn run_integration_tests(
     //         return Err(e);
     //     }
     // }
-    
+
     println!("✅ Интеграционные тесты временно отключены");
     Ok("Интеграционные тесты временно отключены".to_string())
 }
 
 /// Команда экспорта в интерактивный HTML
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn export_interactive_html(
     state: State<'_, AppState>,
 ) -> std::result::Result<String, String> {
     let last_analysis = state.last_analysis.lock().unwrap();
-    
+
     if let Some(analysis) = last_analysis.as_ref() {
         let exporter = Exporter::new();
-        let html_content = exporter.export_to_interactive_html(&analysis.graph)
+        let html_content = exporter
+            .export_to_interactive_html(&analysis.graph)
             .map_err(|e| format!("Ошибка экспорта в HTML: {e}"))?;
-        
+
         Ok(html_content)
     } else {
         Err("Нет данных для экспорта. Сначала выполните анализ проекта.".to_string())
@@ -225,21 +274,21 @@ pub async fn export_interactive_html(
 }
 
 /// Команда получения diff-анализа
+#[cfg(feature = "gui")]
 #[tauri::command]
-pub async fn get_diff_analysis(
-    state: State<'_, AppState>,
-) -> std::result::Result<String, String> {
+pub async fn get_diff_analysis(state: State<'_, AppState>) -> std::result::Result<String, String> {
     let last_analysis = state.last_analysis.lock().unwrap();
     let previous_analysis = state.previous_analysis.lock().unwrap();
-    
+
     if let (Some(current), Some(previous)) = (last_analysis.as_ref(), previous_analysis.as_ref()) {
         let diff_analyzer = DiffAnalyzer::new();
-        let diff_result = diff_analyzer.analyze_diff(&current.graph, previous)
+        let diff_result = diff_analyzer
+            .analyze_diff(&current.graph, previous)
             .map_err(|e| format!("Ошибка diff-анализа: {e}"))?;
-        
-        let json_result = serde_json::to_string(&diff_result)
-            .map_err(|e| format!("Ошибка сериализации: {e}"))?;
-        
+
+        let json_result =
+            serde_json::to_string(&diff_result).map_err(|e| format!("Ошибка сериализации: {e}"))?;
+
         Ok(json_result)
     } else {
         Err("Недостаточно данных для diff-анализа. Необходимо минимум два анализа.".to_string())
@@ -247,28 +296,38 @@ pub async fn get_diff_analysis(
 }
 
 /// Команда получения продвинутых метрик
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_advanced_metrics(
     capsule_name: String,
     state: State<'_, AppState>,
 ) -> std::result::Result<String, String> {
     let last_analysis = state.last_analysis.lock().unwrap();
-    
+
     if let Some(analysis) = last_analysis.as_ref() {
         // Найдем капсулу по имени
-        if let Some(capsule) = analysis.graph.capsules.values().find(|c| c.name == capsule_name) {
+        if let Some(capsule) = analysis
+            .graph
+            .capsules
+            .values()
+            .find(|c| c.name == capsule_name)
+        {
             let metrics_calculator = AdvancedMetricsCalculator::new();
-            
+
             if let Ok(content) = fs::read_to_string(&capsule.file_path) {
-                let metrics = metrics_calculator.calculate_metrics(capsule, &content)
+                let metrics = metrics_calculator
+                    .calculate_metrics(capsule, &content)
                     .map_err(|e| format!("Ошибка расчета метрик: {e}"))?;
-                
+
                 let json_result = serde_json::to_string(&metrics)
                     .map_err(|e| format!("Ошибка сериализации: {e}"))?;
-                
+
                 Ok(json_result)
             } else {
-                Err(format!("Не удалось прочитать файл капсулы: {}", capsule.file_path.display()))
+                Err(format!(
+                    "Не удалось прочитать файл капсулы: {}",
+                    capsule.file_path.display()
+                ))
             }
         } else {
             Err(format!("Капсула '{}' не найдена", capsule_name))
@@ -276,9 +335,10 @@ pub async fn get_advanced_metrics(
     } else {
         Err("Нет данных для анализа. Сначала выполните анализ проекта.".to_string())
     }
-} 
+}
 
 /// Команда обратной совместимости - упрощенный анализ проекта
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn analyze_project(
     project_path: String,
@@ -287,7 +347,12 @@ pub async fn analyze_project(
 ) -> std::result::Result<String, String> {
     let config = AnalysisConfig {
         project_path: PathBuf::from(project_path.clone()),
-        include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
+        include_patterns: vec![
+            "**/*.rs".to_string(),
+            "**/*.ts".to_string(),
+            "**/*.js".to_string(),
+            "**/*.py".to_string(),
+        ],
         exclude_patterns: vec![],
         max_depth: Some(3),
         follow_symlinks: false,
@@ -296,7 +361,12 @@ pub async fn analyze_project(
         parse_tests: false,
         experimental_features: false,
         generate_summaries: false,
-        languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript, FileType::Python],
+        languages: vec![
+            FileType::Rust,
+            FileType::TypeScript,
+            FileType::JavaScript,
+            FileType::Python,
+        ],
     };
 
     // Сканирование файлов
@@ -309,19 +379,37 @@ pub async fn analyze_project(
 
     // Если файлы не найдены, создаем демо-капсулы для демонстрации
     let mut capsules = std::collections::HashMap::new();
-    
+
     if files.is_empty() {
         // Создаем несколько демо-капсул для демонстрации работы системы
         let demo_capsules_data = vec![
-            ("main", CapsuleType::Function, "Core", 15, "Главная функция приложения"),
-            ("config", CapsuleType::Module, "Core", 25, "Модуль конфигурации"),
-            ("utils", CapsuleType::Module, "Utils", 35, "Утилиты и помощники"),
+            (
+                "main",
+                CapsuleType::Function,
+                "Core",
+                15,
+                "Главная функция приложения",
+            ),
+            (
+                "config",
+                CapsuleType::Module,
+                "Core",
+                25,
+                "Модуль конфигурации",
+            ),
+            (
+                "utils",
+                CapsuleType::Module,
+                "Utils",
+                35,
+                "Утилиты и помощники",
+            ),
             ("api", CapsuleType::Module, "API", 45, "API интерфейс"),
         ];
-        
+
         for (name, capsule_type, layer_name, complexity, slogan) in demo_capsules_data {
             let capsule_id = uuid::Uuid::new_v4();
-            
+
             let capsule = Capsule {
                 id: capsule_id,
                 name: name.to_string(),
@@ -334,7 +422,9 @@ pub async fn analyze_project(
                 dependencies: vec![],
                 layer: Some(layer_name.to_string()),
                 summary: Some(format!("Демо-компонент {name} для тестирования")),
-                description: Some(format!("Демонстрационный компонент {name} для показа возможностей системы")),
+                description: Some(format!(
+                    "Демонстрационный компонент {name} для показа возможностей системы"
+                )),
                 warnings: vec![],
                 status: CapsuleStatus::Active,
                 priority: Priority::Medium,
@@ -345,7 +435,7 @@ pub async fn analyze_project(
                 dependents: vec![],
                 created_at: Some(chrono::Utc::now().to_rfc3339()),
             };
-            
+
             capsules.insert(capsule_id, capsule);
         }
     } else {
@@ -353,10 +443,12 @@ pub async fn analyze_project(
         for file in files.iter() {
             let capsule_id = uuid::Uuid::new_v4();
             let layer_name = determine_layer(&file.path);
-            
+
             let capsule = Capsule {
                 id: capsule_id,
-                name: file.path.file_stem()
+                name: file
+                    .path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string(),
@@ -369,18 +461,24 @@ pub async fn analyze_project(
                 dependencies: vec![],
                 layer: Some(layer_name.clone()),
                 summary: None,
-                description: Some(format!("Файл {}", file.path.file_name().unwrap_or_default().to_string_lossy())),
+                description: Some(format!(
+                    "Файл {}",
+                    file.path.file_name().unwrap_or_default().to_string_lossy()
+                )),
                 warnings: vec![],
                 status: CapsuleStatus::Active,
                 priority: Priority::Medium,
                 tags: vec![layer_name.to_lowercase()],
                 metadata: std::collections::HashMap::new(),
                 quality_score: 0.7,
-                slogan: Some(format!("Компонент {}", file.path.file_name().unwrap_or_default().to_string_lossy())),
+                slogan: Some(format!(
+                    "Компонент {}",
+                    file.path.file_name().unwrap_or_default().to_string_lossy()
+                )),
                 dependents: vec![],
                 created_at: Some(chrono::Utc::now().to_rfc3339()),
             };
-            
+
             capsules.insert(capsule_id, capsule);
         }
     }
@@ -392,7 +490,8 @@ pub async fn analyze_project(
 
     // Упрощенная валидация
     let validator = ValidatorOptimizer::new();
-    let validated_graph = validator.validate_and_optimize(&graph)
+    let validated_graph = validator
+        .validate_and_optimize(&graph)
         .map_err(|e| format!("Ошибка валидации: {e}"))?;
 
     let analysis_result = AnalysisResult {
@@ -403,7 +502,12 @@ pub async fn analyze_project(
             "Проверьте цикличные зависимости между модулями".to_string(),
             "Добавьте документацию к публичным интерфейсам".to_string(),
         ],
-        export_formats: vec![ExportFormat::JSON, ExportFormat::Mermaid, ExportFormat::DOT, ExportFormat::SVG],
+        export_formats: vec![
+            ExportFormat::JSON,
+            ExportFormat::Mermaid,
+            ExportFormat::DOT,
+            ExportFormat::SVG,
+        ],
     };
 
     // Сохраняем результат
@@ -413,10 +517,11 @@ pub async fn analyze_project(
     // Возвращаем JSON результат
     let json_result = serde_json::to_string(&analysis_result)
         .map_err(|e| format!("Ошибка сериализации JSON: {e}"))?;
-    
+
     Ok(json_result)
 }
 
+#[cfg(feature = "gui")]
 fn determine_layer(path: &Path) -> String {
     if let Some(parent) = path.parent() {
         if let Some(dir_name) = parent.file_name() {
@@ -438,6 +543,7 @@ fn determine_layer(path: &Path) -> String {
     "Core".to_string()
 }
 
+#[cfg(feature = "gui")]
 fn determine_capsule_type(file_type: &FileType) -> CapsuleType {
     match file_type {
         FileType::Rust => CapsuleType::Module,
@@ -447,6 +553,7 @@ fn determine_capsule_type(file_type: &FileType) -> CapsuleType {
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_analysis_status(
     state: State<'_, AppState>,
@@ -458,6 +565,7 @@ pub async fn get_analysis_status(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn export_analysis(
     format: String,
@@ -469,32 +577,37 @@ pub async fn export_analysis(
             let exporter = Exporter::new();
             match format.as_str() {
                 "json" => {
-                    let json_data = exporter.export_to_json(&result.graph)
+                    let json_data = exporter
+                        .export_to_json(&result.graph)
                         .map_err(|e| format!("Ошибка экспорта JSON: {e}"))?;
                     Ok(json_data)
                 }
                 "yaml" => {
-                    let yaml_data = exporter.export_to_yaml(&result.graph)
+                    let yaml_data = exporter
+                        .export_to_yaml(&result.graph)
                         .map_err(|e| format!("Ошибка экспорта YAML: {e}"))?;
                     Ok(yaml_data)
                 }
                 "svg" => {
-                    let svg_data = exporter.export_to_svg(&result.graph)
+                    let svg_data = exporter
+                        .export_to_svg(&result.graph)
                         .map_err(|e| format!("Ошибка экспорта SVG: {e}"))?;
                     Ok(svg_data)
                 }
                 "ai_compact" => {
-                    let ai_data = exporter.export_to_ai_compact(&result.graph)
+                    let ai_data = exporter
+                        .export_to_ai_compact(&result.graph)
                         .map_err(|e| format!("Ошибка экспорта AI Compact: {e}"))?;
                     Ok(ai_data)
                 }
-                _ => Err(format!("Неподдерживаемый формат: {format}"))
+                _ => Err(format!("Неподдерживаемый формат: {format}")),
             }
         }
         None => Err("Нет данных для экспорта".to_string()),
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn generate_architecture_diagram(
     state: State<'_, AppState>,
@@ -503,7 +616,8 @@ pub async fn generate_architecture_diagram(
     match analysis.as_ref() {
         Some(result) => {
             let exporter = Exporter::new();
-            let diagram = exporter.export_to_mermaid(&result.graph)
+            let diagram = exporter
+                .export_to_mermaid(&result.graph)
                 .map_err(|e| format!("Ошибка генерации диаграммы: {e}"))?;
             Ok(diagram)
         }
@@ -511,6 +625,7 @@ pub async fn generate_architecture_diagram(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn generate_svg_architecture_diagram(
     state: State<'_, AppState>,
@@ -519,7 +634,8 @@ pub async fn generate_svg_architecture_diagram(
     match analysis.as_ref() {
         Some(result) => {
             let exporter = Exporter::new();
-            let svg_diagram = exporter.export_to_svg(&result.graph)
+            let svg_diagram = exporter
+                .export_to_svg(&result.graph)
                 .map_err(|e| format!("Ошибка генерации SVG диаграммы: {e}"))?;
             Ok(svg_diagram)
         }
@@ -527,13 +643,19 @@ pub async fn generate_svg_architecture_diagram(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_project_structure(
     project_path: String,
 ) -> std::result::Result<ProjectStructure, String> {
     let config = AnalysisConfig {
         project_path: PathBuf::from(project_path.clone()),
-        include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
+        include_patterns: vec![
+            "**/*.rs".to_string(),
+            "**/*.ts".to_string(),
+            "**/*.js".to_string(),
+            "**/*.py".to_string(),
+        ],
         exclude_patterns: vec!["**/target/**".to_string(), "**/node_modules/**".to_string()],
         max_depth: Some(5),
         follow_symlinks: false,
@@ -542,7 +664,12 @@ pub async fn get_project_structure(
         parse_tests: false,
         experimental_features: false,
         generate_summaries: false,
-        languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript, FileType::Python],
+        languages: vec![
+            FileType::Rust,
+            FileType::TypeScript,
+            FileType::JavaScript,
+            FileType::Python,
+        ],
     };
 
     let scanner = FileScanner::new(
@@ -554,11 +681,11 @@ pub async fn get_project_structure(
 
     let mut file_types = std::collections::HashMap::new();
     let mut layers = std::collections::HashSet::new();
-    
+
     for file in &files {
         let type_str = format!("{:?}", file.file_type);
         *file_types.entry(type_str).or_insert(0) += 1;
-        
+
         // Определяем архитектурные слои по путям
         if let Some(parent) = file.path.parent() {
             if let Some(dir_name) = parent.file_name() {
@@ -587,13 +714,17 @@ pub async fn get_project_structure(
     })
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
-pub async fn validate_project_path(
-    project_path: String,
-) -> std::result::Result<bool, String> {
+pub async fn validate_project_path(project_path: String) -> std::result::Result<bool, String> {
     let config = AnalysisConfig {
         project_path: PathBuf::from(project_path.clone()),
-        include_patterns: vec!["**/*.rs".to_string(), "**/*.ts".to_string(), "**/*.js".to_string(), "**/*.py".to_string()],
+        include_patterns: vec![
+            "**/*.rs".to_string(),
+            "**/*.ts".to_string(),
+            "**/*.js".to_string(),
+            "**/*.py".to_string(),
+        ],
         exclude_patterns: vec![],
         max_depth: Some(3),
         follow_symlinks: false,
@@ -602,7 +733,12 @@ pub async fn validate_project_path(
         parse_tests: false,
         experimental_features: false,
         generate_summaries: false,
-        languages: vec![FileType::Rust, FileType::TypeScript, FileType::JavaScript, FileType::Python],
+        languages: vec![
+            FileType::Rust,
+            FileType::TypeScript,
+            FileType::JavaScript,
+            FileType::Python,
+        ],
     };
 
     let scanner = FileScanner::new(
@@ -613,4 +749,4 @@ pub async fn validate_project_path(
     let files = scanner.scan_files(Path::new(&project_path))?;
 
     Ok(!files.is_empty())
-} 
+}
