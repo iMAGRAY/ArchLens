@@ -1635,6 +1635,23 @@ fn handle_call(
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     match method {
+        "initialize" => {
+            // Optionally parse incoming params to avoid warnings; we don't strictly need them
+            let _ = params;
+            Ok(serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "archlens-mcp", "version": env!("CARGO_PKG_VERSION")},
+                // Minimal capabilities object; clients will follow-up with tools/resources/prompts calls
+                "capabilities": {
+                    "tools": {},
+                    "resources": {},
+                    "prompts": {}
+                }
+            }))
+        }
+        "shutdown" => Ok(serde_json::json!({})),
+        // Some clients may send this notification post-initialize; accept it as no-op
+        "notifications/initialized" => Ok(serde_json::json!({"ok": true})),
         "tools/list" => {
             let tools = tool_list_schema();
             Ok(serde_json::json!({"tools": tools}))
