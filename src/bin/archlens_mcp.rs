@@ -122,7 +122,8 @@ pub enum RpcParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcRequest {
     pub jsonrpc: String,
-    pub id: serde_json::Value,
+    #[serde(default)]
+    pub id: Option<serde_json::Value>,
     pub method: String,
     #[serde(default)]
     pub params: Option<serde_json::Value>,
@@ -2014,7 +2015,8 @@ async fn main() -> anyhow::Result<()> {
             let req: Result<RpcRequest, _> = serde_json::from_str(&line);
             match req {
                 Ok(r) => {
-                    let id = r.id.clone();
+                    let id_opt = r.id.clone();
+                    let is_notification = id_opt.is_none();
                     let mut handled_with_timeout = false;
                     if r.method == "tools/call" {
                         if let Some(params) = r.params.clone() {
@@ -2045,27 +2047,31 @@ async fn main() -> anyhow::Result<()> {
                                     match tokio::time::timeout(timeout, handle).await {
                                         Ok(joined) => match joined {
                                             Ok(Ok(val)) => {
-                                                write_json_line(id.clone(), Some(val), None)
+                                                if !is_notification {
+                                                    write_json_line(id_opt.clone().unwrap(), Some(val), None)
+                                                }
                                             }
-                                            Ok(Err(msg)) => write_json_line(
-                                                id.clone(),
-                                                Option::<serde_json::Value>::None,
-                                                Some(RpcError {
-                                                    code: -32603,
-                                                    message: msg,
-                                                }),
-                                            ),
-                                            Err(e) => write_json_line(
-                                                id.clone(),
-                                                Option::<serde_json::Value>::None,
-                                                Some(RpcError {
-                                                    code: -32603,
-                                                    message: format!("join error: {}", e),
-                                                }),
-                                            ),
+                                            Ok(Err(msg)) => {
+                                                if !is_notification {
+                                                    write_json_line(
+                                                        id_opt.clone().unwrap(),
+                                                        Option::<serde_json::Value>::None,
+                                                        Some(RpcError { code: -32603, message: msg }),
+                                                    )
+                                                }
+                                            }
+                                            Err(e) => {
+                                                if !is_notification {
+                                                    write_json_line(
+                                                        id_opt.clone().unwrap(),
+                                                        Option::<serde_json::Value>::None,
+                                                        Some(RpcError { code: -32603, message: format!("join error: {}", e) }),
+                                                    )
+                                                }
+                                            }
                                         },
                                         Err(_) => write_json_line(
-                                            id.clone(),
+                                            id_opt.clone().unwrap_or(serde_json::json!(null)),
                                             Option::<serde_json::Value>::None,
                                             Some(RpcError {
                                                 code: -32000,
@@ -2079,16 +2085,16 @@ async fn main() -> anyhow::Result<()> {
                     }
                     if !handled_with_timeout {
                         let res = handle_call(&r.method, r.params);
-                        match res {
-                            Ok(val) => write_json_line(id, Some(val), None),
-                            Err(msg) => write_json_line(
-                                id,
-                                Option::<serde_json::Value>::None,
-                                Some(RpcError {
-                                    code: -32603,
-                                    message: msg,
-                                }),
-                            ),
+                        if !is_notification {
+                            let id = id_opt.clone().unwrap_or(serde_json::json!(null));
+                            match res {
+                                Ok(val) => write_json_line(id, Some(val), None),
+                                Err(msg) => write_json_line(
+                                    id,
+                                    Option::<serde_json::Value>::None,
+                                    Some(RpcError { code: -32603, message: msg }),
+                                ),
+                            }
                         }
                     }
                 }
