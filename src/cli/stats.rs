@@ -2,8 +2,9 @@ use std::path::Path;
 use std::collections::HashMap;
 use std::fs;
 use serde::{Serialize, Deserialize};
+use schemars::JsonSchema;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectStats {
     pub total_files: usize,
     pub total_lines: usize,
@@ -12,7 +13,7 @@ pub struct ProjectStats {
     pub scanned_at: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectStructure {
     pub total_files: usize,
     pub file_types: HashMap<String, usize>,
@@ -20,7 +21,7 @@ pub struct ProjectStructure {
     pub files: Vec<FileInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FileInfo {
     pub path: String,
     pub name: String,
