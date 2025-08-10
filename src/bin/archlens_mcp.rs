@@ -626,10 +626,10 @@ fn env_test_delay_ms() -> Option<u64> {
 }
 
 fn env_enable_http() -> bool {
-    matches!(
-        std::env::var("ARCHLENS_ENABLE_HTTP").ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("on")
-    )
+    match std::env::var("ARCHLENS_ENABLE_HTTP").ok().as_deref() {
+        Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("off") => false,
+        _ => true,
+    }
 }
 
 // Recommendation thresholds (configurable via env)
@@ -2129,11 +2129,11 @@ async fn main() -> anyhow::Result<()> {
     });
 
     if let Some(http) = http_opt {
-        tokio::select! {
-            _ = http => Ok(()),
-            _ = stdio => Ok(()),
-        }
+        // Keep HTTP server alive regardless of STDIO state
+        let _ = http.await;
+        Ok(())
     } else {
+        // HTTP disabled: run STDIO JSON-RPC loop only
         let _ = stdio.await;
         Ok(())
     }
