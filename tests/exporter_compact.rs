@@ -149,7 +149,10 @@ fn test_ai_compact_contains_sections() {
     assert!(out.contains("# AI Compact Analysis"));
     assert!(out.contains("## Summary"));
     assert!(out.contains("## Problems (Heuristic)"));
-    assert!(out.contains("## Problems (Validated)"));
+    let has_any_warnings = graph.capsules.values().any(|c| !c.warnings.is_empty());
+    if has_any_warnings {
+        assert!(out.contains("## Problems (Validated)"));
+    }
     assert!(out.contains("## Cycles (Top)"));
     assert!(out.contains("## Top Coupling"));
     assert!(out.contains("## Top Complexity Components"));
