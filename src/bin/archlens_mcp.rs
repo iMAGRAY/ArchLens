@@ -65,14 +65,20 @@ pub struct RpcError { pub code: i32, pub message: String }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolDescription { pub name: String, pub description: String, pub input_schema: serde_json::Value }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ResourceDescription { pub name: String, pub uri: String, #[serde(skip_serializing_if="Option::is_none")] pub mime: Option<String>, #[serde(skip_serializing_if="Option::is_none")] pub description: Option<String> }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ResourceReadArgs { pub uri: String }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PromptMessage { pub role: String, pub content: String }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PromptDescription { pub name: String, pub description: String, pub messages: Vec<PromptMessage> }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PromptGetArgs { pub name: String }
 
 #[derive(Clone)]
 struct HttpState;
@@ -118,6 +124,13 @@ async fn get_schemas() -> Result<Json<serde_json::Value>, axum::http::StatusCode
     Ok(Json(serde_json::json!({"resources": list})))
 }
 
+async fn post_schema_read(Json(args): Json<ResourceReadArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    match read_resource_uri(&args.uri) {
+        Ok((mime, text)) => Ok(Json(serde_json::json!({"uri": args.uri, "mime": mime, "text": text}))),
+        Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
+    }
+}
+
 fn build_http_router() -> Router {
     Router::new()
         .route("/sse/refresh", get(sse_refresh))
@@ -125,6 +138,7 @@ fn build_http_router() -> Router {
         .route("/structure/get", post(post_structure))
         .route("/diagram/generate", post(post_diagram))
         .route("/schemas/list", get(get_schemas))
+        .route("/schemas/read", post(post_schema_read))
         .with_state(HttpState)
 }
 
@@ -171,6 +185,17 @@ fn list_schema_resources() -> Vec<ResourceDescription> {
     resources
 }
 
+fn read_resource_uri(uri: &str) -> Result<(String, String), String> {
+    if let Some(path) = uri.strip_prefix("file://") {
+        let p = PathBuf::from(path);
+        let text = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+        let mime = if p.extension().and_then(|e| e.to_str()) == Some("json") { "application/schema+json" } else { "text/plain" };
+        Ok((mime.to_string(), text))
+    } else {
+        Err("unsupported uri".into())
+    }
+}
+
 fn list_prompts() -> Vec<PromptDescription> {
     vec![
         PromptDescription {
@@ -188,6 +213,10 @@ fn list_prompts() -> Vec<PromptDescription> {
     ]
 }
 
+fn get_prompt_by_name(name: &str) -> Option<PromptDescription> {
+    list_prompts().into_iter().find(|p| p.name == name)
+}
+
 fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
     match method {
         "tools/list" => {
@@ -198,9 +227,21 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
             let resources = list_schema_resources();
             Ok(serde_json::json!({"resources": resources}))
         }
+        "resources/read" => {
+            let args: ResourceReadArgs = serde_json::from_value(params.ok_or("missing params")?)
+                .map_err(|e| e.to_string())?;
+            let (mime, text) = read_resource_uri(&args.uri)?;
+            Ok(serde_json::json!({"resource": {"uri": args.uri, "mime": mime, "text": text}}))
+        }
         "prompts/list" => {
             let prompts = list_prompts();
             Ok(serde_json::json!({"prompts": prompts}))
+        }
+        "prompts/get" => {
+            let args: PromptGetArgs = serde_json::from_value(params.ok_or("missing params")?)
+                .map_err(|e| e.to_string())?;
+            let p = get_prompt_by_name(&args.name).ok_or("prompt not found")?;
+            Ok(serde_json::json!({"prompt": p}))
         }
         "tools/call" => {
             let obj = params.ok_or("missing params")?;
@@ -260,6 +301,8 @@ async fn main() -> anyhow::Result<()> {
     write_schema("export_args", schemars::schema_for!(ExportArgs));
     write_schema("structure_args", schemars::schema_for!(StructureArgs));
     write_schema("diagram_args", schemars::schema_for!(DiagramArgs));
+    write_schema("resource_read_args", schemars::schema_for!(ResourceReadArgs));
+    write_schema("prompt_get_args", schemars::schema_for!(PromptGetArgs));
 
     // 2) HTTP сервер (Streamable)
     let app = build_http_router();
