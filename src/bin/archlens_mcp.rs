@@ -81,7 +81,7 @@ pub struct RpcError { pub code: i32, pub message: String }
 
 // =============== MCP-like Tool List ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ToolDescription { pub name: String, pub description: String, pub input_schema: serde_json::Value }
+pub struct ToolDescription { pub name: String, pub description: String, pub input_schema: serde_json::Value, #[serde(skip_serializing_if="Option::is_none")] pub schema_uri: Option<String> }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ResourceDescription { pub name: String, pub uri: String, #[serde(skip_serializing_if="Option::is_none")] pub mime: Option<String>, #[serde(skip_serializing_if="Option::is_none")] pub description: Option<String> }
@@ -411,12 +411,20 @@ fn tool_list_schema() -> Vec<ToolDescription> {
     let structure_schema = schemars::schema_for!(StructureArgs);
     let diagram_schema = schemars::schema_for!(DiagramArgs);
 
+    let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let schemas_dir = root.join("out").join("schemas");
+    let to_uri = |name: &str| -> Option<String> {
+        let p = schemas_dir.join(format!("{}.schema.json", name));
+        let abs = p.canonicalize().ok()?;
+        Some(format!("file://{}", abs.to_string_lossy()))
+    };
+
     vec![
-        ToolDescription { name: "arch.refresh".into(), description: "Refresh analysis context (noop placeholder)".into(), input_schema: serde_json::json!({"type":"object"}) },
-        ToolDescription { name: "graph.build".into(), description: "Build architecture diagram (mermaid)".into(), input_schema: serde_json::to_value(diagram_schema.schema).unwrap() },
-        ToolDescription { name: "export.ai_compact".into(), description: "Export AI compact analysis".into(), input_schema: serde_json::to_value(export_schema.schema).unwrap() },
-        ToolDescription { name: "structure.get".into(), description: "Get project structure".into(), input_schema: serde_json::to_value(structure_schema.schema).unwrap() },
-        ToolDescription { name: "analyze.project".into(), description: "Analyze project (shallow or deep)".into(), input_schema: serde_json::to_value(analyze_schema.schema).unwrap() },
+        ToolDescription { name: "arch.refresh".into(), description: "Refresh analysis context (noop placeholder)".into(), input_schema: serde_json::json!({"type":"object"}), schema_uri: None },
+        ToolDescription { name: "graph.build".into(), description: "Build architecture diagram (mermaid)".into(), input_schema: serde_json::to_value(diagram_schema.schema).unwrap(), schema_uri: to_uri("diagram_args") },
+        ToolDescription { name: "export.ai_compact".into(), description: "Export AI compact analysis".into(), input_schema: serde_json::to_value(export_schema.schema).unwrap(), schema_uri: to_uri("export_args") },
+        ToolDescription { name: "structure.get".into(), description: "Get project structure".into(), input_schema: serde_json::to_value(structure_schema.schema).unwrap(), schema_uri: to_uri("structure_args") },
+        ToolDescription { name: "analyze.project".into(), description: "Analyze project (shallow or deep)".into(), input_schema: serde_json::to_value(analyze_schema.schema).unwrap(), schema_uri: to_uri("analyze_args") },
     ]
 }
 
