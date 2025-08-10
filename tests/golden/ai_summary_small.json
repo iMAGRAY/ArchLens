@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "components": 2,
+    "relations": 2,
+    "complexity_avg": 6.0,
+    "coupling_index": 0.75,
+    "cohesion_index": 0.25,
+    "cyclomatic_complexity": 4,
+    "layers": [
+      { "name": "Core", "count": 2 }
+    ]
+  },
+  "problems_validated": [],
+  "cycles_top": [],
+  "top_coupling": [
+    { "component": "A", "degree": 2 },
+    { "component": "B", "degree": 2 }
+  ],
+  "top_complexity_components": [
+    { "component": "B", "type": "Module", "complexity": 7 },
+    { "component": "A", "type": "Module", "complexity": 5 }
+  ]
+}
