@@ -1880,8 +1880,8 @@ async fn post_schema_read(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // init tracing (env-controlled)
-    let _ = tracing_subscriber::fmt().try_init();
+    // init tracing (env-controlled). Route logs to stderr so STDIO JSON stays clean
+    let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
 
     // 1) Генерация JSON схем во время запуска (можно вынести в build.rs при необходимости)
     let schemas_dir = PathBuf::from("out/schemas");
