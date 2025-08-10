@@ -457,10 +457,38 @@ async fn main() -> anyhow::Result<()> {
             match req {
                 Ok(r) => {
                     let id = r.id.clone();
-                    let res = handle_call(&r.method, r.params);
-                    match res {
-                        Ok(val) => write_json_line(id, Some(val), None),
-                        Err(msg) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: msg})),
+                    // Detect heavy tools to apply timeout
+                    let mut handled_with_timeout = false;
+                    if r.method == "tools/call" {
+                        if let Some(params) = r.params.clone() {
+                            let name_opt = params.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            if let Some(tool_name) = name_opt {
+                                let is_heavy = matches!(tool_name.as_str(),
+                                    "export.ai_compact" | "structure.get" | "graph.build" | "analyze.project");
+                                if is_heavy {
+                                    handled_with_timeout = true;
+                                    let timeout = Duration::from_millis(env_timeout_ms());
+                                    let method = r.method.clone();
+                                    let pclone = r.params.clone();
+                                    let handle = tokio::task::spawn_blocking(move || handle_call(&method, pclone));
+                                    match tokio::time::timeout(timeout, handle).await {
+                                        Ok(joined) => match joined {
+                                            Ok(Ok(val)) => write_json_line(id, Some(val), None),
+                                            Ok(Err(msg)) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: msg})),
+                                            Err(e) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: format!("join error: {}", e)})),
+                                        },
+                                        Err(_) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32000, message: "timeout".into()})),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !handled_with_timeout {
+                        let res = handle_call(&r.method, r.params);
+                        match res {
+                            Ok(val) => write_json_line(id, Some(val), None),
+                            Err(msg) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: msg})),
+                        }
                     }
                 }
                 Err(e) => write_json_line(serde_json::json!(null), Option::<serde_json::Value>::None, Some(RpcError{code:-32700, message: e.to_string()})),
