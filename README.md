@@ -104,6 +104,8 @@ cargo build --release
 # Request full verbosity via MCP (detail_level=full) to avoid token clipping
 ```
 
+Note: Validated problems are grouped by category with severity counts and top impacted components; optional hint is included when available.
+
 #### 📈 Architecture Diagram
    ```bash
 # Generate Mermaid diagram
