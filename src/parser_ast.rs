@@ -306,21 +306,41 @@ impl ParserAST {
 
     #[cfg(feature = "tree_sitter")]
     fn try_tree_sitter_parse(&self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Option<Vec<ASTElement>>> {
-        use tree_sitter::{Parser, Node};
-        // Сейчас реализуем Rust, остальные языки идут по fallback
-        if !matches!(file_type, FileType::Rust) { return Ok(None); }
+        use tree_sitter::Parser;
         if content.trim().is_empty() { return Ok(Some(Vec::new())); }
-
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_rust::language())
-            .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter rust: {e:?}")))?;
-        let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
-        let mut cursor = tree.walk();
-
         let mut elements: Vec<ASTElement> = Vec::new();
-        self.ts_collect_rust_nodes(content, file_path, tree.root_node(), &mut elements)?;
-
-        Ok(Some(elements))
+        match file_type {
+            FileType::Rust => {
+                parser.set_language(tree_sitter_rust::language())
+                    .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter rust: {e:?}")))?;
+                let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
+                self.ts_collect_rust_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            },
+            FileType::JavaScript => {
+                parser.set_language(tree_sitter_javascript::language())
+                    .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter js: {e:?}")))?;
+                let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
+                self.ts_collect_js_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            },
+            FileType::TypeScript => {
+                parser.set_language(tree_sitter_typescript::language_typescript())
+                    .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter ts: {e:?}")))?;
+                let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
+                self.ts_collect_js_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            },
+            FileType::Python => {
+                parser.set_language(tree_sitter_python::language())
+                    .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter py: {e:?}")))?;
+                let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
+                self.ts_collect_py_nodes(content, file_path, tree.root_node(), &mut elements)?;
+                Ok(Some(elements))
+            },
+            _ => Ok(None)
+        }
     }
 
     fn parse_file_regex(&self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Vec<ASTElement>> {
@@ -692,6 +712,102 @@ impl ParserAST {
             metadata: HashMap::new(),
         };
         Ok(Some(element))
+    }
+
+    // JavaScript / TypeScript collection
+    fn ts_collect_js_nodes(&self, content: &str, file_path: &Path, node: tree_sitter::Node, out: &mut Vec<ASTElement>) -> Result<()> {
+        let mut stack: Vec<tree_sitter::Node> = vec![node];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "function_declaration" => { if let Some(el) = self.ts_js_fn_or_method(content, &n, false)? { out.push(el); } },
+                "method_definition" => { if let Some(el) = self.ts_js_fn_or_method(content, &n, true)? { out.push(el); } },
+                "class_declaration" => { if let Some(el) = self.ts_js_class(content, &n)? { out.push(el); } },
+                "import_declaration" => { if let Some(el) = self.ts_js_import(content, &n)? { out.push(el); } },
+                _ => {}
+            }
+            for i in 0..n.child_count() { if let Some(ch) = n.child(i) { stack.push(ch); } }
+        }
+        Ok(())
+    }
+
+    fn ts_js_ident(&self, node: &tree_sitter::Node, content: &str) -> Option<String> {
+        // try identifier child else derive from text
+        for i in 0..node.child_count() { if let Some(ch) = node.child(i) { if ch.kind()=="identifier" { return Some(self.ts_text(content, &ch).trim().to_string()); } } }
+        None
+    }
+
+    fn ts_js_fn_or_method(&self, content: &str, node: &tree_sitter::Node, is_method: bool) -> Result<Option<ASTElement>> {
+        let name = self.ts_js_ident(node, content).unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position(); let end = node.end_position();
+        let mut params: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') { if let Some(rp) = text[lp..].find(')') { let inside=&text[lp+1..lp+rp]; params=inside.split(',').map(|s| s.trim().to_string()).filter(|s|!s.is_empty()).collect(); } }
+        let mut elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: if is_method { ASTElementType::Method } else { ASTElementType::Function }, content: text.clone(), start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: params, return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        let patterns = &self.js_patterns; elem.complexity = self.calculate_complexity(&elem.content, patterns);
+        Ok(Some(elem))
+    }
+
+    fn ts_js_class(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let name = self.ts_js_ident(node, content).unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position(); let end = node.end_position();
+        let elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: ASTElementType::Class, content: text, start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: Vec::new(), return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        Ok(Some(elem))
+    }
+
+    fn ts_js_import(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position(); let end = node.end_position();
+        let name = text.lines().next().unwrap_or("").trim().to_string();
+        let elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: ASTElementType::Import, content: text, start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: Vec::new(), return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        Ok(Some(elem))
+    }
+
+    // Python collection
+    fn ts_collect_py_nodes(&self, content: &str, file_path: &Path, node: tree_sitter::Node, out: &mut Vec<ASTElement>) -> Result<()> {
+        let mut stack: Vec<tree_sitter::Node> = vec![node];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "function_definition" => { if let Some(el) = self.ts_py_function(content, &n)? { out.push(el); } },
+                "class_definition" => { if let Some(el) = self.ts_py_class(content, &n)? { out.push(el); } },
+                "import_statement" | "import_from_statement" => { if let Some(el) = self.ts_py_import(content, &n)? { out.push(el); } },
+                _ => {}
+            }
+            for i in 0..n.child_count() { if let Some(ch) = n.child(i) { stack.push(ch); } }
+        }
+        Ok(())
+    }
+
+    fn ts_py_ident(&self, node: &tree_sitter::Node, content: &str) -> Option<String> {
+        for i in 0..node.child_count() { if let Some(ch)=node.child(i) { if ch.kind()=="identifier" { return Some(self.ts_text(content, &ch).trim().to_string()); } } }
+        None
+    }
+
+    fn ts_py_function(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let name = self.ts_py_ident(node, content).unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start=node.start_position(); let end=node.end_position();
+        let mut params: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') { if let Some(rp) = text[lp..].find(')') { let inside=&text[lp+1..lp+rp]; params=inside.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(); } }
+        let mut elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: ASTElementType::Function, content: text.clone(), start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: params, return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        let patterns=&self.python_patterns; elem.complexity = self.calculate_complexity(&elem.content, patterns);
+        Ok(Some(elem))
+    }
+
+    fn ts_py_class(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let name = self.ts_py_ident(node, content).unwrap_or_else(|| "<anon>".into());
+        let text = self.ts_text(content, node).to_string();
+        let start=node.start_position(); let end=node.end_position();
+        let elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: ASTElementType::Class, content: text, start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: Vec::new(), return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        Ok(Some(elem))
+    }
+
+    fn ts_py_import(&self, content: &str, node: &tree_sitter::Node) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        let start=node.start_position(); let end=node.end_position();
+        let name = text.lines().next().unwrap_or("").trim().to_string();
+        let elem = ASTElement { id: uuid::Uuid::new_v4(), name, element_type: ASTElementType::Import, content: text, start_line: start.row+1, end_line: end.row+1, start_column: start.column, end_column: end.column, complexity: 1, visibility: "public".into(), parameters: Vec::new(), return_type: None, children: Vec::new(), parent_id: None, metadata: HashMap::new() };
+        Ok(Some(elem))
     }
 }
 
