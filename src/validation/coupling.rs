@@ -55,3 +55,7 @@ impl CouplingValidator {
         Ok(())
     }
 }
+
+impl Default for CouplingValidator {
+    fn default() -> Self { Self::new() }
+}

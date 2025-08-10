@@ -351,9 +351,12 @@ impl Exporter {
 
         svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\" width=\"800\" height=\"600\">\n");
-        svg.push_str(&format!("  <text x=\"400\" y=\"50\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"16\">Архитектурная диаграмма</text>\n"));
-        svg.push_str(&format!("  <text x=\"400\" y=\"80\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"12\">Компонентов: {}, Связей: {}</text>\n", 
-            graph.capsules.len(), graph.relations.len()));
+        svg.push_str("  <text x=\"400\" y=\"50\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"16\">Архитектурная диаграмма</text>\n");
+        svg.push_str(&format!(
+            "  <text x=\"400\" y=\"80\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"12\">Компонентов: {}, Связей: {}</text>\n",
+            graph.capsules.len(),
+            graph.relations.len()
+        ));
 
         let mut y = 120;
         for capsule in graph.capsules.values() {
@@ -392,7 +395,7 @@ impl Exporter {
         ));
 
         for capsule in graph.capsules.values() {
-            html.push_str(&format!("  <div class=\"component\">\n"));
+            html.push_str("  <div class=\"component\">\n");
             html.push_str(&format!("    <h3>{}</h3>\n", capsule.name));
             html.push_str(&format!("    <p>Сложность: {}</p>\n", capsule.complexity));
             html.push_str(&format!(
@@ -412,7 +415,7 @@ impl Exporter {
         let mut cot = String::new();
 
         cot.push_str("# Chain of Thought - Анализ архитектуры\n\n");
-        cot.push_str(&format!("## Общая информация\n"));
+        cot.push_str("## Общая информация\n");
         cot.push_str(&format!("- Компонентов: {}\n", graph.capsules.len()));
         cot.push_str(&format!("- Связей: {}\n", graph.relations.len()));
         cot.push_str(&format!(
@@ -423,9 +426,9 @@ impl Exporter {
         cot.push_str("## Компоненты\n");
         for capsule in graph.capsules.values() {
             cot.push_str(&format!(
-                "- {} ({}): сложность {}\n",
+                "- {} ({:?}): сложность {}\n",
                 capsule.name,
-                format!("{:?}", capsule.capsule_type),
+                capsule.capsule_type,
                 capsule.complexity
             ));
         }

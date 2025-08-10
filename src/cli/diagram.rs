@@ -205,16 +205,14 @@ fn scan_for_dependencies(
                     scan_for_dependencies(&path, dependencies, &module_name)?;
                 }
             }
-        } else {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                match ext {
-                    "rs" => analyze_rust_file(&path, dependencies, current_module)?,
-                    "js" | "ts" | "jsx" | "tsx" => {
-                        analyze_js_file(&path, dependencies, current_module)?
-                    }
-                    "py" => analyze_python_file(&path, dependencies, current_module)?,
-                    _ => {}
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            match ext {
+                "rs" => analyze_rust_file(&path, dependencies, current_module)?,
+                "js" | "ts" | "jsx" | "tsx" => {
+                    analyze_js_file(&path, dependencies, current_module)?
                 }
+                "py" => analyze_python_file(&path, dependencies, current_module)?,
+                _ => {}
             }
         }
     }

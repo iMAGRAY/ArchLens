@@ -1,5 +1,4 @@
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -23,9 +22,7 @@ fn stdio_tools_list_and_structure() {
 "#;
     stdin.write_all(tools.as_bytes()).unwrap();
 
-    let call = format!(
-        "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"structure.get\",\"arguments\":{{\"project_path\":\".\",\"detail_level\":\"summary\"}}}}}}\n"
-    );
+    let call = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"structure.get\",\"arguments\":{\"project_path\":\".\",\"detail_level\":\"summary\"}}}\n".to_string();
     stdin.write_all(call.as_bytes()).unwrap();
 
     drop(stdin);

@@ -1,8 +1,7 @@
 use crate::parser_ast::ASTElement;
 use crate::types::{Capsule, CapsuleStatus, CapsuleType, Priority, Result};
-use chrono::Utc;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use uuid::Uuid;
 
 /// Core capsule constructor - creates architectural capsules from AST elements
@@ -67,7 +66,7 @@ impl CapsuleConstructor {
     pub fn create_capsules(
         &self,
         ast_elements: &[ASTElement],
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Result<Vec<Capsule>> {
         let mut capsules = Vec::new();
 
@@ -87,7 +86,7 @@ impl CapsuleConstructor {
     fn create_capsule_from_element(
         &self,
         element: &ASTElement,
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Result<Option<Capsule>> {
         // Filter elements by significance
         if !self.is_significant_element(element) {
@@ -147,7 +146,7 @@ impl CapsuleConstructor {
     pub fn create_capsule_from_node(
         &self,
         node: &ASTElement,
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Result<Capsule> {
         let id = Uuid::new_v4();
 
@@ -155,7 +154,7 @@ impl CapsuleConstructor {
             id,
             name: node.name.clone(),
             capsule_type: CapsuleType::Module,
-            file_path: file_path.clone(),
+            file_path: file_path.to_path_buf(),
             line_start: node.start_line,
             line_end: node.end_line,
             size: node.end_line - node.start_line,
@@ -262,7 +261,7 @@ impl CapsuleConstructor {
     }
 
     /// Determines architectural layer based on file path
-    fn determine_layer(&self, file_path: &PathBuf) -> String {
+    fn determine_layer(&self, file_path: &Path) -> String {
         if let Some(parent) = file_path.parent() {
             if let Some(dir_name) = parent.file_name() {
                 if let Some(dir_str) = dir_name.to_str() {

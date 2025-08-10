@@ -241,7 +241,7 @@ impl CodeSmellDetector {
         let threshold = rule.threshold.unwrap_or(200.0) as usize;
 
         let struct_pattern = Regex::new(r"struct\s+(\w+)").unwrap();
-        let impl_pattern = Regex::new(r"impl\s+(\w+)").unwrap();
+        let _impl_pattern = Regex::new(r"impl\s+(\w+)").unwrap();
 
         for cap in struct_pattern.captures_iter(content) {
             let struct_name = cap.get(1).unwrap().as_str();
@@ -287,7 +287,7 @@ impl CodeSmellDetector {
             }
         }
 
-        for (line, positions) in duplicates {
+        for (_line, positions) in duplicates {
             if positions.len() > 1 {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::DuplicatedCode,

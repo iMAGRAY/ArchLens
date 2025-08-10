@@ -247,7 +247,7 @@ impl CapsuleGraphBuilder {
 
         // Similar size (within 50% difference)
         let size_ratio = (capsule1.size as f32) / (capsule2.size as f32);
-        if size_ratio < 0.5 || size_ratio > 2.0 {
+        if !(0.5..=2.0).contains(&size_ratio) {
             return false;
         }
 

@@ -21,7 +21,7 @@ fn http_sse_refresh_streams_events() {
 
     let client = reqwest::blocking::Client::new();
     let r = client.get("http://127.0.0.1:5178/sse/refresh").send();
-    if let Ok(mut resp) = r {
+    if let Ok(resp) = r {
         assert!(resp.status().is_success());
         let text = resp.text().unwrap_or_default();
         assert!(

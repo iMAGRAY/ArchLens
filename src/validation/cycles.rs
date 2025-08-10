@@ -56,6 +56,7 @@ impl CycleValidator {
         cycles
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn has_cycle_dfs(
         &self,
         capsule_id: Uuid,
@@ -86,4 +87,8 @@ impl CycleValidator {
         path.pop();
         false
     }
+}
+
+impl Default for CycleValidator {
+    fn default() -> Self { Self::new() }
 }

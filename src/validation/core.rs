@@ -1,11 +1,11 @@
 use crate::types::Result;
 use crate::types::*;
-use std::collections::HashMap;
-use uuid::Uuid;
+// use std::collections::HashMap;
+// use uuid::Uuid;
 
 use super::{
     CohesionValidator, ComplexityValidator, CouplingValidator, CycleValidator, GraphOptimizer,
-    LayerValidator, NamingValidator, PatternDetector, SolidAnalyzer,
+    LayerValidator, NamingValidator, PatternDetector,
 };
 
 /// Main validator and optimizer for capsule graphs

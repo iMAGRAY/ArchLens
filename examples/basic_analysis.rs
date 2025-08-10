@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run basic analysis
     let binary_path = get_archlens_binary_path();
     let output = Command::new(&binary_path)
-        .args(&["analyze", &project_path])
+        .args(["analyze", &project_path])
         .output()?;
 
     if output.status.success() {
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run structure analysis
     let structure_output = Command::new(&binary_path)
-        .args(&["structure", &project_path, "--show-metrics"])
+        .args(["structure", &project_path, "--show-metrics"])
         .output()?;
 
     if structure_output.status.success() {
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run AI compact export
     let ai_output = Command::new(&binary_path)
-        .args(&["export", &project_path, "ai_compact"])
+        .args(["export", &project_path, "ai_compact"])
         .output()?;
 
     if ai_output.status.success() {
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate Mermaid diagram
     let diagram_output = Command::new(&binary_path)
-        .args(&["diagram", &project_path, "mermaid", "--include-metrics"])
+        .args(["diagram", &project_path, "mermaid", "--include-metrics"])
         .output()?;
 
     if diagram_output.status.success() {

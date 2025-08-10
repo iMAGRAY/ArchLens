@@ -43,7 +43,7 @@ impl QualityMetricsCalculator {
     ) -> Result<QualityMetrics> {
         let lines_of_code = self.count_lines_of_code(content);
         let cyclomatic_complexity = self.calculate_cyclomatic_complexity(content, file_type);
-        let cognitive_complexity = self.calculate_cognitive_complexity(content, &file_type);
+        let cognitive_complexity = self.calculate_cognitive_complexity(content, file_type);
         let comment_ratio = self.calculate_comment_ratio(content, file_type);
         let documentation_completeness =
             self.calculate_documentation_completeness(content, file_type);
@@ -108,13 +108,10 @@ impl QualityMetricsCalculator {
             }
 
             // Добавляем сложность для условий и циклов
-            if trimmed.contains("if ") || trimmed.contains("else if ") {
-                complexity += 1 + nesting_level;
-            } else if trimmed.contains("for ") || trimmed.contains("while ") {
-                complexity += 1 + nesting_level;
-            } else if trimmed.contains("match ") || trimmed.contains("switch ") {
-                complexity += 1 + nesting_level;
-            } else if trimmed.contains("catch ") || trimmed.contains("except ") {
+            if trimmed.contains("if ") || trimmed.contains("else if ")
+                || trimmed.contains("for ") || trimmed.contains("while ")
+                || trimmed.contains("match ") || trimmed.contains("switch ")
+                || trimmed.contains("catch ") || trimmed.contains("except ") {
                 complexity += 1 + nesting_level;
             }
         }
@@ -278,9 +275,7 @@ impl QualityMetricsCalculator {
         let duplication_penalty = duplication_ratio * 50.0;
 
         let index = 171.0 - volume * 5.2 - complexity_penalty + comment_bonus - duplication_penalty;
-
-        // Ограничиваем значение от 0 до 100
-        index.max(0.0).min(100.0)
+        index.clamp(0.0, 100.0)
     }
 
     fn create_complexity_patterns() -> HashMap<FileType, Vec<Regex>> {

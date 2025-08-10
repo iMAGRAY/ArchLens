@@ -192,7 +192,7 @@ impl CapsuleEnricher {
     /// Enrich capsule metadata from content
     fn enrich_capsule_metadata(&self, capsule: &mut Capsule, content: &str) -> Result<()> {
         // Extract comments and documentation
-        let doc_comments = self.extract_documentation(&content, &capsule.file_path);
+        let doc_comments = self.extract_documentation(content, &capsule.file_path);
         if let Some(doc) = doc_comments.first() {
             capsule.summary = Some(doc.clone());
         }

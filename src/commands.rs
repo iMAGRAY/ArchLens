@@ -1,23 +1,45 @@
+#[cfg(feature = "gui")]
 use crate::advanced_metrics::AdvancedMetricsCalculator;
+#[cfg(feature = "gui")]
 use crate::capsule_constructor::CapsuleConstructor;
+#[cfg(feature = "gui")]
 use crate::capsule_enricher::CapsuleEnricher;
+#[cfg(feature = "gui")]
 use crate::capsule_graph_builder::CapsuleGraphBuilder;
+#[cfg(feature = "gui")]
 use crate::diff_analyzer::DiffAnalyzer;
-use crate::exporter::Exporter;
+#[cfg(feature = "gui")]
 use crate::file_scanner::FileScanner;
+#[cfg(feature = "gui")]
 use crate::metadata_extractor::MetadataExtractor;
+#[cfg(feature = "gui")]
 use crate::parser_ast::ParserAST;
+#[cfg(feature = "gui")]
 use crate::types::*;
+#[cfg(feature = "gui")]
 use crate::validator_optimizer::ValidatorOptimizer;
+#[cfg(feature = "gui")]
+use crate::types::{AnalysisError, AnalysisResult, CapsuleGraph};
+#[cfg(feature = "gui")]
+use crate::types::{AnalysisResult as _AnalysisResult, CapsuleGraph as _CapsuleGraph};
+#[cfg(feature = "gui")]
 use std::collections::HashMap;
+#[cfg(feature = "gui")]
 use std::fs;
+#[cfg(feature = "gui")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "gui")]
 use std::sync::Arc;
+#[cfg(feature = "gui")]
 use std::sync::Mutex;
 #[cfg(feature = "gui")]
 use tauri::State;
+#[cfg(feature = "gui")]
 use uuid::Uuid;
+#[cfg(feature = "gui")]
+use crate::exporter::Exporter;
 
+#[cfg(feature = "gui")]
 impl From<AnalysisError> for String {
     fn from(error: AnalysisError) -> Self {
         match error {
@@ -32,11 +54,13 @@ impl From<AnalysisError> for String {
 }
 
 // Состояние приложения
+#[cfg(feature = "gui")]
 pub struct AppState {
     pub last_analysis: Arc<Mutex<Option<AnalysisResult>>>,
     pub previous_analysis: Arc<Mutex<Option<CapsuleGraph>>>,
 }
 
+#[cfg(feature = "gui")]
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -46,6 +70,7 @@ impl Default for AppState {
     }
 }
 
+#[cfg(feature = "gui")]
 #[derive(serde::Serialize)]
 pub struct ProjectStructure {
     pub total_files: usize,
@@ -496,6 +521,7 @@ pub async fn analyze_project(
     Ok(json_result)
 }
 
+#[cfg(feature = "gui")]
 fn determine_layer(path: &Path) -> String {
     if let Some(parent) = path.parent() {
         if let Some(dir_name) = parent.file_name() {
@@ -517,6 +543,7 @@ fn determine_layer(path: &Path) -> String {
     "Core".to_string()
 }
 
+#[cfg(feature = "gui")]
 fn determine_capsule_type(file_type: &FileType) -> CapsuleType {
     match file_type {
         FileType::Rust => CapsuleType::Module,

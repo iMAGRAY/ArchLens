@@ -294,7 +294,7 @@ pub fn run_deep_pipeline(project_path: &str) -> std::result::Result<String, Stri
         ],
     };
 
-    Ok(serde_json::to_string_pretty(&result).map_err(|e| e.to_string())?)
+    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
 pub fn print_help() {

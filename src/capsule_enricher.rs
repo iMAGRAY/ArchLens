@@ -4,8 +4,8 @@
 use crate::enrichment::quality_analyzer::QualityCategory;
 use crate::enrichment::{CapsuleEnricher as CoreEnricher, QualityAnalyzer, SemanticEnricher};
 use crate::types::*;
-use std::collections::HashMap;
-use uuid::Uuid;
+// use std::collections::HashMap;
+// use uuid::Uuid;
 
 /// Главный обогатитель капсул - композитный класс, использующий специализированные анализаторы
 pub struct CapsuleEnricher {

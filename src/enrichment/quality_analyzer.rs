@@ -1,5 +1,4 @@
 // Quality analysis module for code assessment
-use crate::enrichment::enricher_core::*;
 use crate::types::*;
 use std::collections::HashMap;
 
@@ -130,7 +129,7 @@ impl QualityAnalyzer {
 
         Ok(QualityAssessment {
             overall_score,
-            maintainability_index: maintainability_index.max(0.0).min(100.0),
+            maintainability_index: maintainability_index.clamp(0.0, 100.0),
             complexity_score,
             documentation_score,
             test_coverage_score,
@@ -166,7 +165,7 @@ impl QualityAnalyzer {
             score -= (excess as f32) * 0.01;
         }
 
-        score.max(0.0).min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Calculate documentation score (0-100, higher is better)
@@ -219,11 +218,11 @@ impl QualityAnalyzer {
         }
 
         // Bonus for good comment density (5-20%)
-        if comment_density >= 0.05 && comment_density <= 0.20 {
+        if (0.05..=0.20).contains(&comment_density) {
             score += 20.0;
         }
 
-        score.min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Calculate test coverage score (0-100, higher is better)
@@ -265,7 +264,7 @@ impl QualityAnalyzer {
             score += 10.0;
         }
 
-        score.min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Calculate maintainability score (0-100, higher is better)
@@ -317,7 +316,7 @@ impl QualityAnalyzer {
             score -= 10.0;
         }
 
-        score.max(0.0).min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Calculate technical debt score (0-100, higher is better, less debt)
@@ -351,7 +350,7 @@ impl QualityAnalyzer {
             score -= ((line_count - 500) as f32) * 0.02;
         }
 
-        score.max(0.0).min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Calculate weighted overall score
@@ -378,6 +377,7 @@ impl QualityAnalyzer {
     }
 
     /// Generate quality improvement recommendations
+    #[allow(clippy::too_many_arguments)]
     fn generate_recommendations(
         &self,
         _capsule: &Capsule,
@@ -525,13 +525,18 @@ impl QualityAnalyzer {
     fn has_magic_numbers(&self, content: &str) -> bool {
         // Look for numeric literals that might be magic numbers
         use regex::Regex;
-        let magic_number_regex = Regex::new(r"\b(?<![\w.])\d{2,}\b(?![\w.])").unwrap();
+        // Упростим: числа из 2+ цифр, выделяем вторую группу как само число
+        let magic_number_regex = Regex::new(r"(^|[^A-Za-z0-9_.])([0-9]{2,})([^A-Za-z0-9_.]|$)").unwrap();
 
         // Ignore common non-magic numbers
-        let magic_numbers: Vec<&str> = magic_number_regex
-            .find_iter(content)
-            .map(|m| m.as_str())
-            .filter(|&num| !["0", "1", "2", "10", "100", "1000"].contains(&num))
+        let magic_numbers: Vec<String> = magic_number_regex
+            .captures_iter(content)
+            .filter_map(|cap| cap.get(2))
+            .map(|m| m.as_str().to_string())
+            .filter(|num| {
+                let common: [&str; 6] = ["0", "1", "2", "10", "100", "1000"];
+                !common.contains(&num.as_str())
+            })
             .collect();
 
         magic_numbers.len() > 3

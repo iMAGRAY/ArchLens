@@ -2,6 +2,7 @@
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use archlens::cli;
+#[cfg(feature = "gui")]
 use archlens::commands::*;
 use std::env;
 

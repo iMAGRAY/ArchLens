@@ -44,7 +44,7 @@ impl ContentAnalyzer {
         &self,
         content: &str,
         file_type: &FileType,
-        file_path: &Path,
+        _file_path: &Path,
     ) -> Result<ContentAnalysis> {
         let documentation = self.extract_documentation(content, file_type);
         let has_tests = self.has_tests(content, file_type);

@@ -37,7 +37,7 @@ impl CapsuleAnalyzer {
             score *= 1.1;
         }
 
-        score.max(0.0).min(1.0)
+        score.clamp(0.0, 1.0)
     }
 
     /// Analyzes capsule dependencies
@@ -90,7 +90,7 @@ impl CapsuleAnalyzer {
 
         let avg_quality: f64 = capsules
             .iter()
-            .map(|c| Self::analyze_quality(c))
+            .map(Self::analyze_quality)
             .sum::<f64>()
             / total_capsules.max(1) as f64;
 

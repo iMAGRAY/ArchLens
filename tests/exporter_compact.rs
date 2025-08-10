@@ -1,7 +1,7 @@
 use archlens::exporter::Exporter;
 use archlens::types::*;
 use chrono::Utc;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 fn build_test_graph() -> CapsuleGraph {

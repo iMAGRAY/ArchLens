@@ -411,7 +411,7 @@ impl ParserAST {
 
     fn parse_file_regex(
         &self,
-        file_path: &Path,
+        _file_path: &Path,
         content: &str,
         file_type: &FileType,
     ) -> Result<Vec<ASTElement>> {
@@ -541,6 +541,7 @@ impl ParserAST {
     }
 
     /// Создает элемент AST
+    #[allow(clippy::too_many_arguments)]
     fn create_element(
         &self,
         name: &str,

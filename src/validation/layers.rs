@@ -68,3 +68,7 @@ impl LayerValidator {
         }
     }
 }
+
+impl Default for LayerValidator {
+    fn default() -> Self { Self::new() }
+}

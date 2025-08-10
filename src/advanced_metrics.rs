@@ -165,12 +165,12 @@ impl AdvancedMetricsCalculator {
         let overall_score: f32 = (srp_score + ocp_score + lsp_score + isp_score + dip_score) / 5.0;
 
         Ok(SOLIDScore {
-            srp_score: srp_score.max(0.0).min(1.0),
-            ocp_score: ocp_score.max(0.0).min(1.0),
-            lsp_score: lsp_score.max(0.0).min(1.0),
-            isp_score: isp_score.max(0.0).min(1.0),
-            dip_score: dip_score.max(0.0).min(1.0),
-            overall_score: overall_score.max(0.0).min(1.0),
+            srp_score: srp_score.clamp(0.0, 1.0),
+            ocp_score: ocp_score.clamp(0.0, 1.0),
+            lsp_score: lsp_score.clamp(0.0, 1.0),
+            isp_score: isp_score.clamp(0.0, 1.0),
+            dip_score: dip_score.clamp(0.0, 1.0),
+            overall_score: overall_score.clamp(0.0, 1.0),
         })
     }
 

@@ -89,7 +89,7 @@ impl DependencyAnalyzer {
         &self,
         content: &str,
         file_type: &FileType,
-        file_path: &Path,
+        _file_path: &Path,
     ) -> Result<DependencyAnalysis> {
         let imports = self.extract_imports(content, file_type)?;
         let exports = self.extract_exports(content, file_type)?;
@@ -247,7 +247,7 @@ impl DependencyAnalyzer {
         for dep in dependencies {
             graph
                 .entry(dep.source.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(dep.target.clone());
         }
 
@@ -271,6 +271,7 @@ impl DependencyAnalyzer {
         circular_deps
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn find_cycle(
         &self,
         graph: &HashMap<String, HashSet<String>>,

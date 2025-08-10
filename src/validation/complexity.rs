@@ -50,3 +50,7 @@ impl ComplexityValidator {
         Ok(())
     }
 }
+
+impl Default for ComplexityValidator {
+    fn default() -> Self { Self::new() }
+}

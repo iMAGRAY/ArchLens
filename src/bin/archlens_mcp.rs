@@ -321,7 +321,7 @@ fn strip_code_blocks(md: &str) -> String {
     out
 }
 
-fn canonical_section_key<'a>(name: &'a str) -> String {
+fn canonical_section_key(name: &str) -> String {
     let n = name.trim().to_lowercase();
     match n.as_str() {
         "summary" => "## summary".to_string(),
@@ -411,7 +411,7 @@ fn trim_bullets_in_sections(md: &str, top_n: Option<usize>) -> String {
     out
 }
 
-fn level<'a>(opt: &'a Option<String>) -> &'a str {
+fn level(opt: &Option<String>) -> &str {
     match opt.as_deref() {
         Some("standard") => "standard",
         Some("full") => "full",
@@ -497,7 +497,7 @@ fn format_structure_result(
             .collect::<Vec<_>>()
             .join("\n");
         if !files.is_empty() {
-            out.push_str("\n");
+            out.push('\n');
             out.push_str(&files);
         }
     }
@@ -733,7 +733,7 @@ async fn post_export_summary(
             .export_to_ai_summary_json(&graph)
             .map_err(|e| e.to_string())?;
         json = trim_ai_summary_json(json, topn);
-        let txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
+        let _txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
         Ok::<serde_json::Value, String>(json)
     });
     let out = match tokio::time::timeout(timeout, handle).await {
@@ -1275,7 +1275,7 @@ fn build_graph_for_path(project_path: &str) -> Result<archlens::types::CapsuleGr
     use archlens::capsule_graph_builder::CapsuleGraphBuilder;
     use archlens::file_scanner::FileScanner;
     use archlens::parser_ast::ParserAST;
-    use archlens::types::{Capsule, Result as ArchResult};
+    use archlens::types::Capsule;
     use archlens::validator_optimizer::ValidatorOptimizer;
     use std::path::Path;
 
@@ -1410,8 +1410,6 @@ fn read_resource_uri(uri: &str) -> Result<(String, String), String> {
         let p = PathBuf::from(path);
         let text = fs::read_to_string(&p).map_err(|e| e.to_string())?;
         let mime = if p.extension().and_then(|e| e.to_str()) == Some("json") {
-            "application/json"
-        } else if p.extension().and_then(|e| e.to_str()) == Some("json") {
             "application/json"
         } else if p.extension().and_then(|e| e.to_str()) == Some("schema.json") {
             "application/schema+json"
@@ -1632,227 +1630,6 @@ fn compute_recommendations_with_thresholds(
     serde_json::json!({"status":"ok","recommendations": recs})
 }
 
-#[cfg(test)]
-mod tests {
-    use super::compute_recommendations;
-    use super::compute_recommendations_with_thresholds;
-    use super::export_cache_key;
-    use super::RecoThresholds;
-    use serde_json::json;
-    use std::fs;
-    use std::path::PathBuf;
-
-    fn tools_from(rec: &serde_json::Value) -> Vec<String> {
-        rec.get("recommendations")
-            .and_then(|v| v.as_array())
-            .unwrap_or(&vec![])
-            .iter()
-            .filter_map(|r| {
-                r.get("tool")
-                    .and_then(|t| t.as_str())
-                    .map(|s| s.to_string())
-            })
-            .collect()
-    }
-
-    #[test]
-    fn recommend_starts_with_summary_when_no_json() {
-        let res = compute_recommendations(".", None, None);
-        let tools = tools_from(&res);
-        assert!(tools.iter().any(|t| t == "export.ai_summary_json"));
-    }
-
-    #[test]
-    fn recommend_graph_build_when_cycles_present() {
-        let mock = json!({
-            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [{"path":["A","B","A"]}],
-            "problems_validated": []
-        });
-        let res = compute_recommendations(".", Some(&mock), None);
-        let tools = tools_from(&res);
-        assert!(tools.iter().any(|t| t == "graph.build"));
-    }
-
-    #[test]
-    fn recommend_problems_validated_when_high_severity() {
-        let mock = json!({
-            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [],
-            "problems_validated": [{"category":"complexity","count":5,"severity":{"H":1,"M":0,"L":0},"top_components":["X"],"hint":"reduce complexity"}]
-        });
-        let res = compute_recommendations(".", Some(&mock), None);
-        let tools = tools_from(&res);
-        assert!(tools.iter().any(|t| t == "export.ai_compact"));
-    }
-
-    #[test]
-    fn recommend_top_complexity_when_high_avg() {
-        let mock = json!({
-            "summary": {"complexity_avg": 12.0, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [],
-            "problems_validated": []
-        });
-        let res = compute_recommendations(".", Some(&mock), None);
-        let tools = tools_from(&res);
-        assert!(tools.iter().any(|t| t == "export.ai_compact"));
-    }
-
-    #[test]
-    fn recommend_top_complexity_when_high_avg_with_custom_threshold() {
-        let mock = json!({
-            "summary": {"complexity_avg": 6.5, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [],
-            "problems_validated": []
-        });
-        let th = RecoThresholds {
-            complexity_avg: 6.0,
-            coupling_index: 0.7,
-            cohesion_index: 0.3,
-            layer_imbalance_pct: 60,
-            high_sev_cats: 2,
-        };
-        let res = compute_recommendations_with_thresholds(".", Some(&mock), None, &th);
-        let tools = tools_from(&res);
-        assert!(tools.iter().any(|t| t == "export.ai_compact"));
-    }
-
-    #[test]
-    fn recommend_layer_imbalance_triggers_layers_section() {
-        let mock = json!({
-            "summary": {"components": 10, "layers": [
-                {"name":"Core","count":6}, {"name":"Infra","count":4}
-            ], "complexity_avg": 3.0, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [],
-            "problems_validated": []
-        });
-        let res = compute_recommendations(".", Some(&mock), None);
-        let recs = res
-            .get("recommendations")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let mut has_layers = false;
-        for r in recs {
-            if r.get("tool").and_then(|t| t.as_str()) == Some("export.ai_compact") {
-                if let Some(args) = r.get("arguments").and_then(|a| a.as_object()) {
-                    if let Some(sections) = args.get("sections").and_then(|s| s.as_array()) {
-                        if sections.iter().any(|s| s.as_str() == Some("layers")) {
-                            has_layers = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        assert!(
-            has_layers,
-            "expected layers section recommendation when imbalance >= threshold"
-        );
-    }
-
-    #[test]
-    fn recommend_prompt_refactor_when_many_high_severity_categories() {
-        let mock = json!({
-            "summary": {"components": 5, "layers": [], "complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
-            "cycles_top": [],
-            "problems_validated": [
-                {"category":"complexity","count":3,"severity":{"H":1,"M":0,"L":0}},
-                {"category":"coupling","count":2,"severity":{"H":1,"M":0,"L":0}}
-            ]
-        });
-        let res = compute_recommendations(".", Some(&mock), None);
-        let recs = res
-            .get("recommendations")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let has_prompt = recs
-            .iter()
-            .any(|r| r.get("prompt").and_then(|p| p.as_str()) == Some("ai.refactor.plan"));
-        assert!(
-            has_prompt,
-            "expected ai.refactor.plan prompt when multiple high-severity categories"
-        );
-    }
-
-    #[test]
-    fn cache_key_changes_on_fs_change() {
-        let dir = PathBuf::from("out/test_cache_tmp");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        // initial file
-        fs::write(dir.join("a.txt"), b"hello").unwrap();
-        let p = dir.canonicalize().unwrap();
-        let k1 = super::export_cache_key(
-            p.to_string_lossy().as_ref(),
-            "summary",
-            &None,
-            Some(5),
-            Some(12345),
-        );
-        // ensure mtime tick
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        // change FS: add file to ensure different fingerprint
-        fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
-        let k2 = super::export_cache_key(
-            p.to_string_lossy().as_ref(),
-            "summary",
-            &None,
-            Some(5),
-            Some(12345),
-        );
-        assert_ne!(k1, k2, "cache key must change when project content changes");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn cache_lru_trims_to_max_entries() {
-        let dir = PathBuf::from("out/test_cache_lru_entries");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        // Create 3 files
-        for i in 0..3 {
-            let p = dir.join(format!("{}.json", i));
-            fs::write(
-                &p,
-                format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "x".repeat(10)),
-            )
-            .unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        super::cache_trim_lru(&dir, Some(2), None);
-        let count = fs::read_dir(&dir).unwrap().flatten().count();
-        assert!(count <= 2, "LRU should trim to 2 entries or fewer");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn cache_lru_trims_to_max_bytes() {
-        let dir = PathBuf::from("out/test_cache_lru_bytes");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        // Create files ~30B each
-        for i in 0..4 {
-            let p = dir.join(format!("{}.json", i));
-            fs::write(
-                &p,
-                format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "y".repeat(30)),
-            )
-            .unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        // 4*~30B ≈ 120B; trim to <= 70B
-        super::cache_trim_lru(&dir, None, Some(70));
-        let mut total: u64 = 0;
-        for ent in fs::read_dir(&dir).unwrap().flatten() {
-            total += ent.metadata().unwrap().len();
-        }
-        assert!(total <= 80, "LRU should trim total bytes to the target");
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
-
 fn handle_call(
     method: &str,
     params: Option<serde_json::Value>,
@@ -1975,15 +1752,15 @@ fn handle_call(
                         .export_to_ai_summary_json(&graph)
                         .map_err(|e| e.to_string())?;
                     json = trim_ai_summary_json(json, args.top_n);
-                    let txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
-                    let etag = content_etag(&txt);
+                    let _txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
+                    let etag = content_etag(&_txt);
                     if args.use_cache.unwrap_or(true) {
-                        cache_put(&key, &etag, &txt);
+                        cache_put(&key, &etag, &_txt);
                     }
                     if args.etag.as_deref() == Some(&etag) {
                         Ok(serde_json::json!({"status":"not_modified","etag": etag}))
                     } else {
-                        let txt = clamp_text_with_limit(&txt, args.max_output_chars);
+                        let txt = clamp_text_with_limit(&_txt, args.max_output_chars);
                         Ok(
                             serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(json)}),
                         )
@@ -2155,8 +1932,11 @@ async fn main() -> anyhow::Result<()> {
     let (tx_lines, mut rx_lines) = tokio::sync::mpsc::unbounded_channel::<String>();
     std::thread::spawn(move || {
         let stdin = io::stdin();
-        for line in stdin.lock().lines().flatten() {
-            let _ = tx_lines.send(line);
+        for line in stdin.lock().lines().map_while(Result::ok) {
+            if let Err(e) = tx_lines.send(line) {
+                eprintln!("stdin channel closed: {:?}", e);
+                break;
+            }
         }
     });
     let stdio = tokio::spawn(async move {
@@ -2260,5 +2040,189 @@ async fn main() -> anyhow::Result<()> {
     tokio::select! {
         _ = http => Ok(()),
         _ = stdio => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_recommendations;
+    use super::compute_recommendations_with_thresholds;
+    use super::RecoThresholds;
+    use serde_json::json;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn tools_from(rec: &serde_json::Value) -> Vec<String> {
+        rec.get("recommendations")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|r| r.get("tool").and_then(|t| t.as_str()).map(|s| s.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn recommend_starts_with_summary_when_no_json() {
+        let res = compute_recommendations(".", None, None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_summary_json"));
+    }
+
+    #[test]
+    fn recommend_graph_build_when_cycles_present() {
+        let mock = json!({
+            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [{"path":["A","B","A"]}],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "graph.build"));
+    }
+
+    #[test]
+    fn recommend_problems_validated_when_high_severity() {
+        let mock = json!({
+            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": [{"category":"complexity","count":5,"severity":{"H":1,"M":0,"L":0},"top_components":["X"],"hint":"reduce complexity"}]
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn recommend_top_complexity_when_high_avg() {
+        let mock = json!({
+            "summary": {"complexity_avg": 12.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn recommend_top_complexity_when_high_avg_with_custom_threshold() {
+        let mock = json!({
+            "summary": {"complexity_avg": 6.5, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let th = RecoThresholds {
+            complexity_avg: 6.0,
+            coupling_index: 0.7,
+            cohesion_index: 0.3,
+            layer_imbalance_pct: 60,
+            high_sev_cats: 2,
+        };
+        let res = compute_recommendations_with_thresholds(".", Some(&mock), None, &th);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn recommend_layer_imbalance_triggers_layers_section() {
+        let mock = json!({
+            "summary": {"components": 10, "layers": [
+                {"name":"Core","count":6}, {"name":"Infra","count":4}
+            ], "complexity_avg": 3.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let recs = res
+            .get("recommendations")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut has_layers = false;
+        for r in recs {
+            if r.get("tool").and_then(|t| t.as_str()) == Some("export.ai_compact") {
+                if let Some(args) = r.get("arguments").and_then(|a| a.as_object()) {
+                    if let Some(sections) = args.get("sections").and_then(|s| s.as_array()) {
+                        if sections.iter().any(|s| s.as_str() == Some("layers")) {
+                            has_layers = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(has_layers, "expected layers section recommendation when imbalance >= threshold");
+    }
+
+    #[test]
+    fn recommend_prompt_refactor_when_many_high_severity_categories() {
+        let mock = json!({
+            "summary": {"components": 5, "layers": [], "complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": [
+                {"category":"complexity","count":3,"severity":{"H":1,"M":0,"L":0}},
+                {"category":"coupling","count":2,"severity":{"H":1,"M":0,"L":0}}
+            ]
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let recs = res
+            .get("recommendations")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let has_prompt = recs
+            .iter()
+            .any(|r| r.get("prompt").and_then(|p| p.as_str()) == Some("ai.refactor.plan"));
+        assert!(has_prompt, "expected ai.refactor.plan prompt when multiple high-severity categories");
+    }
+
+    #[test]
+    fn cache_key_changes_on_fs_change() {
+        let dir = PathBuf::from("out/test_cache_tmp");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.txt"), b"hello").unwrap();
+        let p = dir.canonicalize().unwrap();
+        let k1 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
+        let k2 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        assert_ne!(k1, k2, "cache key must change when project content changes");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cache_lru_trims_to_max_entries() {
+        let dir = PathBuf::from("out/test_cache_lru_entries");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for i in 0..3 {
+            let p = dir.join(format!("{}.json", i));
+            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "x".repeat(10))).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        super::cache_trim_lru(&dir, Some(2), None);
+        let count = fs::read_dir(&dir).unwrap().flatten().count();
+        assert!(count <= 2, "LRU should trim to 2 entries or fewer");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cache_lru_trims_to_max_bytes() {
+        let dir = PathBuf::from("out/test_cache_lru_bytes");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for i in 0..4 {
+            let p = dir.join(format!("{}.json", i));
+            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "y".repeat(30))).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        super::cache_trim_lru(&dir, None, Some(70));
+        let mut total: u64 = 0;
+        for ent in fs::read_dir(&dir).unwrap().flatten() {
+            total += ent.metadata().unwrap().len();
+        }
+        assert!(total <= 80, "LRU should trim total bytes to the target");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -32,7 +32,7 @@ fn http_tools_list_and_call() {
     }
 
     // tools/call export.ai_summary_json
-    let payload = serde_json::json!({
+    let _payload = serde_json::json!({
         "name": "tools/call",
         "arguments": {"project_path":".", "top_n": 3}
     });

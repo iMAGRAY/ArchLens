@@ -162,6 +162,7 @@ impl MetricsCalculator {
     }
 
     /// DFS for component connectivity
+    #[allow(clippy::only_used_in_recursion)]
     fn dfs_component_visit(
         &self,
         capsule_id: Uuid,
@@ -187,6 +188,7 @@ impl MetricsCalculator {
     }
 
     /// Calculate dependency depth for a capsule
+    #[allow(clippy::only_used_in_recursion)]
     pub fn calculate_dependency_depth(
         &self,
         capsule_id: Uuid,
@@ -269,15 +271,13 @@ impl MetricsCalculator {
         capsules: &HashMap<Uuid, Capsule>,
         relations: &[CapsuleRelation],
     ) -> CohesionMetrics {
-        let mut layer_cohesion_scores: Vec<f32> = Vec::new();
-
-        // Group by layers
+        // Calculated on the fly; no need for a separate vector
         let mut layer_groups: HashMap<String, Vec<Uuid>> = HashMap::new();
         for capsule in capsules.values() {
             if let Some(layer) = &capsule.layer {
                 layer_groups
                     .entry(layer.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(capsule.id);
             }
         }

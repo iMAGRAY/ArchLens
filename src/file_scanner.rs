@@ -1,6 +1,5 @@
 use crate::types::{AnalysisError, CapsuleStatus, FileMetadata, FileType, Result};
 use std::{fs, path::Path};
-use walkdir::WalkDir;
 
 /// Сканер файлов проекта
 pub struct FileScanner {

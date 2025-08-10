@@ -124,6 +124,7 @@ impl CycleDetector {
     }
 
     /// DFS for finish time calculation
+    #[allow(clippy::only_used_in_recursion)]
     fn dfs_finish_time(
         &self,
         capsule_id: Uuid,
@@ -145,6 +146,7 @@ impl CycleDetector {
     }
 
     /// DFS for component collection
+    #[allow(clippy::only_used_in_recursion)]
     fn dfs_component(
         &self,
         capsule_id: Uuid,

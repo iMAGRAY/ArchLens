@@ -28,3 +28,7 @@ impl CohesionValidator {
         Ok(())
     }
 }
+
+impl Default for CohesionValidator {
+    fn default() -> Self { Self::new() }
+}

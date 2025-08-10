@@ -51,12 +51,10 @@ impl CapsuleOptimizer {
                 merged_indices.insert(i);
 
                 // Find similar capsules for merging
-                for j in (i + 1)..capsules.len() {
+                for (j, other_capsule) in capsules.iter().enumerate().skip(i + 1) {
                     if merged_indices.contains(&j) {
                         continue;
                     }
-
-                    let other_capsule = &capsules[j];
 
                     if Self::should_merge_capsule(other_capsule)
                         && Self::can_merge_capsules(capsule, other_capsule)

@@ -7,7 +7,6 @@ use crate::capsule_constructor::CapsuleConstructor;
 use crate::capsule_graph_builder::CapsuleGraphBuilder;
 use crate::exporter::Exporter;
 use crate::file_scanner::FileScanner;
-use crate::metadata_extractor::MetadataExtractor;
 use crate::parser_ast::ParserAST;
 use crate::validator_optimizer::ValidatorOptimizer;
 

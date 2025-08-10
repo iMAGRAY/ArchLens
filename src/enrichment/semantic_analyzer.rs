@@ -213,7 +213,7 @@ impl SemanticAnalyzer {
             },
             AntipatternDetector {
                 pattern_name: "Magic Numbers".to_string(),
-                detection_regex: Regex::new(r"\b(?<![\w.])\d{2,}\b(?![\w.])").unwrap(),
+                detection_regex: Regex::new(r"(^|[^A-Za-z0-9_.])[0-9]{2,}([^A-Za-z0-9_.]|$)").unwrap(),
                 severity: Priority::Medium,
                 description: "Magic numbers should be replaced with named constants".to_string(),
             },
@@ -301,12 +301,12 @@ impl SemanticAnalyzer {
             complexity += pattern.find_iter(content).count() as u32;
         }
 
-        complexity as u32
+        complexity
     }
 
     /// Calculate cognitive complexity (more sophisticated than cyclomatic)
     pub fn calculate_cognitive_complexity(&self, content: &str) -> u32 {
-        let mut complexity = 0;
+        let mut complexity: u32 = 0;
         let mut nesting_level: i32 = 0;
 
         for line in content.lines() {
@@ -322,23 +322,23 @@ impl SemanticAnalyzer {
 
             // Add complexity for control structures
             if trimmed.starts_with("if ") || trimmed.contains(" if ") {
-                complexity += 1 + nesting_level;
+                complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
             if trimmed.starts_with("else") {
-                complexity += 1;
+                complexity = complexity.saturating_add(1);
             }
             if trimmed.starts_with("for ") || trimmed.contains(" for ") {
-                complexity += 1 + nesting_level;
+                complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
             if trimmed.starts_with("while ") || trimmed.contains(" while ") {
-                complexity += 1 + nesting_level;
+                complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
             if trimmed.starts_with("match ") || trimmed.starts_with("switch ") {
-                complexity += 1 + nesting_level;
+                complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
         }
 
-        complexity as u32
+        complexity
     }
 }
 
@@ -405,7 +405,7 @@ impl SemanticEnricher {
             - 16.2 * (lines_of_code.ln());
 
         Ok(QualityMetrics {
-            maintainability_index: maintainability_index.max(0.0).min(100.0),
+            maintainability_index: maintainability_index.clamp(0.0, 100.0),
             cognitive_complexity,
             technical_debt_ratio: tech_debt_ratio,
             test_coverage_estimate: test_coverage,
@@ -551,12 +551,12 @@ impl SemanticEnricher {
         complexity += content.matches("||").count() as u32;
         complexity += content.matches("&&").count() as u32;
 
-        complexity as u32
+                complexity
     }
-
-    fn calculate_cognitive_complexity(&self, content: &str) -> u32 {
+ 
+     fn calculate_cognitive_complexity(&self, content: &str) -> u32 {
         // Simplified cognitive complexity calculation
-        let mut complexity = 0;
+        let mut complexity: u32 = 0;
         let mut nesting_level: i32 = 0;
 
         for line in content.lines() {
@@ -570,11 +570,11 @@ impl SemanticEnricher {
             }
 
             if trimmed.starts_with("if ") || trimmed.contains(" if ") {
-                complexity += 1 + nesting_level;
+                complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
         }
-
-        complexity as u32
+        
+        complexity
     }
 
     fn calculate_documentation_ratio(&self, content: &str) -> f32 {

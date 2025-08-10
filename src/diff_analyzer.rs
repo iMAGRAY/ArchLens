@@ -2,9 +2,8 @@
 
 use crate::types::Result;
 use crate::types::*;
-use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
+// use uuid::Uuid;
 
 /// Анализатор diff между версиями архитектуры
 #[derive(Debug)]
@@ -16,9 +15,9 @@ pub struct DiffAnalyzer {
 /// Калькулятор влияния изменений
 #[derive(Debug)]
 pub struct ImpactCalculator {
-    breaking_change_patterns: Vec<String>,
-    major_change_patterns: Vec<String>,
-    complexity_change_threshold: f32,
+    #[allow(dead_code)] breaking_change_patterns: Vec<String>,
+    #[allow(dead_code)] major_change_patterns: Vec<String>,
+    #[allow(dead_code)] complexity_change_threshold: f32,
 }
 
 impl DiffAnalyzer {
@@ -188,11 +187,7 @@ impl DiffAnalyzer {
                     "Количество предупреждений для '{}' изменилось на {:+}",
                     current.name, warning_delta
                 ),
-                impact: if warning_delta > 0 {
-                    ChangeImpact::Quality
-                } else {
-                    ChangeImpact::Quality
-                },
+                impact: ChangeImpact::Quality,
                 related_components: Vec::new(),
             });
         }

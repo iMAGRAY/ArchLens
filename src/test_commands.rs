@@ -30,14 +30,13 @@ mod tests {
             created_at: Some("2024-01-01T00:00:00Z".to_string()),
         };
 
-        // Should not panic
-        assert!(true);
+        // basic construct done
     }
 
     #[test]
     fn test_export_formats() {
         // Test that export formats are recognized
-        let formats = vec![ExportFormat::JSON, ExportFormat::YAML];
+        let formats = [ExportFormat::JSON, ExportFormat::YAML];
 
         assert_eq!(formats.len(), 2);
     }
@@ -53,7 +52,7 @@ mod tests {
     #[test]
     fn test_capsule_types() {
         // Test capsule types
-        let types = vec![
+        let types = [
             CapsuleType::Module,
             CapsuleType::Function,
             CapsuleType::Class,

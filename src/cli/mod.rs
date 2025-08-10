@@ -12,8 +12,6 @@ pub use handlers::*;
 pub use parser::*;
 pub use stats::*;
 
-use std::env;
-
 /// Основная функция CLI для запуска всех команд
 pub async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let command = match parser::parse_args() {

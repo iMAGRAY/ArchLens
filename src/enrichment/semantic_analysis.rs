@@ -3,7 +3,7 @@
 use crate::types::*;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+// use std::path::Path;
 
 /// Семантическая связь между элементами
 #[derive(Debug, Clone)]
@@ -167,7 +167,7 @@ impl SemanticAnalysisEngine {
         }
     }
 
-    fn calculate_abstraction_level(&self, content: &str, semantic_links: &[SemanticLink]) -> f32 {
+    fn calculate_abstraction_level(&self, _content: &str, semantic_links: &[SemanticLink]) -> f32 {
         let total_links = semantic_links.len() as f32;
         if total_links == 0.0 {
             return 0.0;

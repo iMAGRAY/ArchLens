@@ -97,7 +97,7 @@ impl ArgParser {
     }
 
     fn parse_analyze(&mut self) -> Result<CliCommand, String> {
-        let project_path = self.current().map(|s| s.clone());
+        let project_path = self.current().cloned();
         self.advance();
 
         let mut verbose = false;
@@ -128,7 +128,7 @@ impl ArgParser {
     }
 
     fn parse_export(&mut self) -> Result<CliCommand, String> {
-        let project_path = self.current().map(|s| s.clone());
+        let project_path = self.current().cloned();
         self.advance();
 
         let format_str = self
@@ -193,7 +193,7 @@ impl ArgParser {
     }
 
     fn parse_structure(&mut self) -> Result<CliCommand, String> {
-        let project_path = self.current().map(|s| s.clone());
+        let project_path = self.current().cloned();
         self.advance();
 
         let mut max_depth = None;
@@ -232,7 +232,7 @@ impl ArgParser {
     }
 
     fn parse_diagram(&mut self) -> Result<CliCommand, String> {
-        let project_path = self.current().map(|s| s.clone());
+        let project_path = self.current().cloned();
         self.advance();
 
         let diagram_type_str = self

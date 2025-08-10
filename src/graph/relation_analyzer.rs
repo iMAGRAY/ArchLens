@@ -253,7 +253,7 @@ impl RelationAnalyzer {
         let imports = self
             .extract_imports(content, &file_type)
             .unwrap_or_default();
-        let exports = self
+        let _exports = self
             .extract_exports(content, &file_type)
             .unwrap_or_default();
 
@@ -326,12 +326,12 @@ impl RelationAnalyzer {
     /// Calculate connection strength between imports and exports
     fn calculate_connection_strength(&self, imports: &[String], exports: &[String]) -> f32 {
         let mut strength = 0.0;
-        let mut matches = 0;
+        let mut _matches = 0;
 
         for import in imports {
             for export in exports {
                 if import.contains(export) || export.contains(import) {
-                    matches += 1;
+                    _matches += 1;
                     strength += 1.0;
                 }
             }
