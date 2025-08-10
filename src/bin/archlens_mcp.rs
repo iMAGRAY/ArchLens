@@ -6,6 +6,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use futures_util::Stream;
 use axum::{routing::{get, post}, Router, response::sse::{Event, Sse}, extract::State, Json};
 use std::time::Duration;
+use std::thread;
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
 use regex::Regex;
@@ -188,11 +189,19 @@ fn env_timeout_ms() -> u64 {
     std::env::var("ARCHLENS_TIMEOUT_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(60_000)
 }
 
+fn env_test_delay_ms() -> Option<u64> {
+    std::env::var("ARCHLENS_TEST_DELAY_MS").ok().and_then(|s| s.parse().ok())
+}
+
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let path = ensure_absolute_path(&args.project_path);
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
-    let handle = tokio::task::spawn_blocking(move || export::generate_ai_compact(path.to_string_lossy().as_ref()));
+    let delay = env_test_delay_ms();
+    let handle = tokio::task::spawn_blocking(move || {
+        if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
+        export::generate_ai_compact(path.to_string_lossy().as_ref())
+    });
     match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(md)) => {
@@ -209,7 +218,11 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
     let path = ensure_absolute_path(&args.project_path);
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
-    let handle = tokio::task::spawn_blocking(move || stats::get_project_structure(path.to_string_lossy().as_ref()));
+    let delay = env_test_delay_ms();
+    let handle = tokio::task::spawn_blocking(move || {
+        if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
+        stats::get_project_structure(path.to_string_lossy().as_ref())
+    });
     match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(structure)) => {
@@ -228,8 +241,10 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     if kind != "mermaid" { return Err(axum::http::StatusCode::BAD_REQUEST); }
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
+    let delay = env_test_delay_ms();
     let p = path.clone();
     let handle = tokio::task::spawn_blocking(move || {
+        if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
         // Prefer full graph-based mermaid; fallback to simple import-based
         cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
             .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
@@ -470,7 +485,11 @@ async fn main() -> anyhow::Result<()> {
                                     let timeout = Duration::from_millis(env_timeout_ms());
                                     let method = r.method.clone();
                                     let pclone = r.params.clone();
-                                    let handle = tokio::task::spawn_blocking(move || handle_call(&method, pclone));
+                                    let delay = env_test_delay_ms();
+                                    let handle = tokio::task::spawn_blocking(move || {
+                                        if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
+                                        handle_call(&method, pclone)
+                                    });
                                     match tokio::time::timeout(timeout, handle).await {
                                         Ok(joined) => match joined {
                                             Ok(Ok(val)) => write_json_line(id, Some(val), None),
