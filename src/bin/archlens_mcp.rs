@@ -499,10 +499,10 @@ async fn post_export_summary(Json(args): Json<AISummaryArgs>) -> Result<Json<ser
                 let etag = content_etag(&txt);
                 if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                    Ok(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)})))
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)})))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -530,9 +530,9 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
                 let etag = content_etag(&text);
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
-                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": text}]})))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -555,18 +555,18 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
         cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
-            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))?;
+            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
     });
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
-            Ok(Ok(mmd)) => {
+            Ok(Ok(Ok(mmd))) => {
                 let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
                 let etag = content_etag(&text);
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
-                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": text}]})))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -1283,9 +1283,9 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
                     if args.etag.as_deref() == Some(&etag) {
-                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                        Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                     } else {
-                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                        Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]})))
                     }
                 }
                 "graph.build" => {
@@ -1297,9 +1297,9 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
                     if args.etag.as_deref() == Some(&etag) {
-                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                        Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                     } else {
-                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                        Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]})))
                     }
                 }
                 "analyze.project" => {
