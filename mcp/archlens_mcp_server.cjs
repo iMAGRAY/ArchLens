@@ -504,7 +504,7 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
 }
     
 // 🎯 UNIFIED RESPONSE CREATION
-function createMCPResponse(toolName, result, error = null, projectPath = null) {
+function createMCPResponse(toolName, result, error = null, projectPath = null, detailLevel = 'summary') {
   if (error) {
     return {
       content: [{
@@ -518,7 +518,7 @@ function createMCPResponse(toolName, result, error = null, projectPath = null) {
   return {
     content: [{
       type: "text",
-      text: formatToolResult(toolName, result, projectPath)
+      text: formatToolResult(toolName, result, projectPath, detailLevel)
     }]
   };
 }
@@ -545,28 +545,62 @@ function getToolAction(toolName) {
 
 // 📊 RESULT FORMATTING
 class ResponseFormatter {
-  static formatAnalysisResult(result, projectPath) {
+  static formatAnalysisResult(result, projectPath, detailLevel = 'summary') {
     const data = typeof result === 'string' ? JSON.parse(result) : result;
-    // produce a terse summary
+    if (detailLevel === 'full') {
+      return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+    }
+    if (detailLevel === 'standard') {
+      return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Top: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,5).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+    }
+    // summary (default)
     return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Top: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,3).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
   }
-  static formatExportResult(result, projectPath) {
-    if (result && typeof result === 'string' && result.trim().length > 0) {
-      // Already compact markdown from exporter
-      return result;
+  static formatExportResult(result, projectPath, detailLevel = 'summary') {
+    let content = '';
+    if (typeof result === 'string') {
+      content = result;
+    } else if (result && result.output) {
+      content = result.output;
+    } else {
+      return `❌ ARCHITECTURE ANALYSIS ERROR\nPath: ${projectPath}`;
     }
-    if (result && result.output) { return result.output; }
-    return `❌ ARCHITECTURE ANALYSIS ERROR\nPath: ${projectPath}`;
+    if (detailLevel === 'full') {
+      return clampText(content, MAX_OUTPUT_CHARS);
+    }
+    // Remove large code blocks for summary/standard
+    const stripped = stripCodeBlocks(content);
+    if (detailLevel === 'standard') {
+      return clampText(stripped, Math.min(SUMMARY_LIMIT_CHARS * 2, MAX_OUTPUT_CHARS));
+    }
+    // summary
+    return clampText(stripped, SUMMARY_LIMIT_CHARS);
   }
-  static formatStructureResult(result, projectPath) {
+  static formatStructureResult(result, projectPath, detailLevel = 'summary') {
     const data = typeof result === 'string' ? JSON.parse(result) : (result.structure ? result.structure : result);
+    if (detailLevel === 'full') {
+      const files = data.files ? data.files.slice(0, 25).map(f => `- \`${f.path}\` (${f.extension}, ${(f.size/1024).toFixed(1)}KB)`).join('\n') : '';
+      return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}\n${files}`;
+    }
+    if (detailLevel === 'standard') {
+      return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,10).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
+    }
+    // summary
     return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,5).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
   }
-  static formatDiagramResult(result, projectPath) {
+  static formatDiagramResult(result, projectPath, detailLevel = 'summary') {
     if (result.diagram && typeof result.diagram === 'string') {
+      let diagram = result.diagram;
+      // Clamp diagram to avoid huge payloads
+      if (detailLevel === 'summary') {
+        diagram = clampText(diagram, 15000);
+      } else if (detailLevel === 'standard') {
+        diagram = clampText(diagram, 40000);
+      } else {
+        diagram = clampText(diagram, 120000);
+      }
       const header = `# 📊 DIAGRAM\nPath: ${projectPath}\nType: ${result.diagram_type || 'mermaid'}`;
-      // Avoid huge payloads: keep diagram content as-is but allow caller to paginate
-      return `${header}\n\n\`\`\`mermaid\n${result.diagram}\n\`\`\``;
+      return `${header}\n\n\`\`\`mermaid\n${diagram}\n\`\`\``;
     }
     return `❌ DIAGRAM GENERATION ERROR\nPath: ${projectPath}`;
   }
@@ -591,24 +625,39 @@ class ResponseFormatter {
   }
 }
 
-function formatToolResult(toolName, result, projectPath) {
+function formatToolResult(toolName, result, projectPath, detailLevel = 'summary') {
   switch (toolName) {
     case 'analyze_project':
-      return ResponseFormatter.formatAnalysisResult(result, projectPath);
+      return ResponseFormatter.formatAnalysisResult(result, projectPath, detailLevel);
     case 'export_ai_compact': 
-      return ResponseFormatter.formatExportResult(result, projectPath);
+      return ResponseFormatter.formatExportResult(result, projectPath, detailLevel);
     case 'get_project_structure':
-      return ResponseFormatter.formatStructureResult(result, projectPath);
+      return ResponseFormatter.formatStructureResult(result, projectPath, detailLevel);
     case 'generate_diagram':
-      return ResponseFormatter.formatDiagramResult(result, projectPath);
+      return ResponseFormatter.formatDiagramResult(result, projectPath, detailLevel);
     default:
       return JSON.stringify(result, null, 2);
   }
 }
 
+// Summarization helpers
+const SUMMARY_LIMIT_CHARS = 30000; // ~30KB per message
+typeof global !== 'undefined' && (global.SUMMARY_LIMIT_CHARS = SUMMARY_LIMIT_CHARS);
+
+function stripCodeBlocks(md) {
+  try {
+    return md.replace(/```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n');
+  } catch { return md; }
+}
+
+function clampText(text, maxChars) {
+  if (!text || text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n... (truncated)";
+}
+
 // 📊 SIMPLIFIED HANDLERS
 async function handleAnalyzeProject(args) {
-  const { project_path } = args;
+  const { project_path, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
@@ -624,7 +673,7 @@ async function handleAnalyzeProject(args) {
     // Rust binary gracefully handles access denied errors, so we don't need admin precheck
     
     const result = await executeArchlensCommand('analyze', resolvedPath);
-    return createMCPResponse('analyze_project', result, null, resolvedPath);
+    return createMCPResponse('analyze_project', result, null, resolvedPath, detail_level);
     
   } catch (error) {
     // Smart error handling: most access errors are handled gracefully by Rust binary
@@ -665,7 +714,7 @@ async function handleAnalyzeProject(args) {
     }
     
     // For non-permission errors, return standard error response
-    return createMCPResponse('analyze_project', null, error, project_path);
+    return createMCPResponse('analyze_project', null, error, project_path, detail_level);
   }
 }
 
@@ -700,7 +749,7 @@ async function createLimitedAnalysis(projectPath) {
 }
 
 async function handleExportAICompact(args) {
-  const { project_path, output_file } = args;
+  const { project_path, output_file, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
@@ -736,15 +785,15 @@ Please provide the complete absolute path to your project directory.`
     
     const result = await executeArchlensCommand('export', resolvedPath, additionalArgs);
     
-    return createMCPResponse('export_ai_compact', result, null, resolvedPath);
+    return createMCPResponse('export_ai_compact', result, null, resolvedPath, detail_level);
     
   } catch (error) {
-    return createMCPResponse('export_ai_compact', null, error, project_path);
+    return createMCPResponse('export_ai_compact', null, error, project_path, detail_level);
   }
 }
 
 async function handleGetProjectStructure(args) {
-  const { project_path } = args;
+  const { project_path, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
@@ -776,20 +825,20 @@ Please provide the complete absolute path to your project directory.`
     
     try {
       const result = await executeArchlensCommand('structure', resolvedPath);
-      return createMCPResponse('get_project_structure', result, null, resolvedPath);
+      return createMCPResponse('get_project_structure', result, null, resolvedPath, detail_level);
     } catch (binaryError) {
       // Fallback: manual structure scan
       const fallbackResult = createManualStructure(resolvedPath);
-      return createMCPResponse('get_project_structure', fallbackResult, null, resolvedPath);
+      return createMCPResponse('get_project_structure', fallbackResult, null, resolvedPath, detail_level);
     }
     
   } catch (error) {
-    return createMCPResponse('get_project_structure', null, error, project_path);
+    return createMCPResponse('get_project_structure', null, error, project_path, detail_level);
   }
 }
 
 async function handleGenerateDiagram(args) {
-  const { project_path, diagram_type = "mermaid", output_file } = args;
+  const { project_path, diagram_type = "mermaid", output_file, detail_level = 'summary' } = args;
   
   try {
     if (!project_path) {
@@ -840,7 +889,7 @@ Please provide the complete absolute path to your project directory.`
           size: diagramContent.length
         };
         
-        return createMCPResponse('generate_diagram', result, null, resolvedPath);
+        return createMCPResponse('generate_diagram', result, null, resolvedPath, detail_level);
         } else {
         throw new Error(`Diagram file not created: ${tempFile}`);
         }
@@ -849,7 +898,7 @@ Please provide the complete absolute path to your project directory.`
     }
     
   } catch (error) {
-    return createMCPResponse('generate_diagram', null, error, project_path);
+    return createMCPResponse('generate_diagram', null, error, project_path, detail_level);
   }
 }
 
@@ -953,115 +1002,59 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          output_file: {
-            description: "Path to save the result (optional)",
-            type: "string"
-          },
-          focus_critical_only: {
-            description: "Show only critical problems: God Objects, circular dependencies, high complexity, SOLID violations",
-            type: "boolean"
-          },
-          include_diff_analysis: {
-            description: "Include comparison with previous versions for degradation analysis",
-            type: "boolean"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path to the project directory", type: "string" },
+          output_file: { description: "Path to save the result (optional)", type: "string" },
+          focus_critical_only: { description: "Show only critical problems", type: "boolean" },
+          include_diff_analysis: { description: "Include comparison with previous versions", type: "boolean" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
-            {
+    {
       name: "analyze_project",
-      description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment of problems: project size, file distribution, architectural risk assessment (small/medium/large), recommendations for deep analysis via export_ai_compact.",
+      description: "📊 SHORT ANALYSIS - Basic project statistics with a preliminary assessment.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          verbose: {
-            description: "Detailed output with additional metrics and warnings",
-            type: "boolean"
-          },
-          analyze_dependencies: {
-            description: "Analyze module dependencies to identify circular dependencies",
-            type: "boolean"
-          },
-          extract_comments: {
-            description: "Extract comments and analyze documentation quality",
-            type: "boolean"
-          },
-          generate_summaries: {
-            description: "Generate brief descriptions of components with potential problems",
-            type: "boolean"
-          },
-          include_patterns: {
-            description: "File patterns to include (e.g., ['**/*.rs', '**/*.ts'])",
-            type: "array",
-            items: { type: "string" }
-          },
-          exclude_patterns: {
-            description: "File patterns to exclude",
-            type: "array",
-            items: { type: "string" }
-          },
-          max_depth: {
-            description: "Maximum directory depth for scanning",
-            type: "integer"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          verbose: { description: "Detailed output", type: "boolean" },
+          analyze_dependencies: { description: "Analyze module dependencies", type: "boolean" },
+          extract_comments: { description: "Analyze documentation quality", type: "boolean" },
+          generate_summaries: { description: "Generate brief descriptions", type: "boolean" },
+          include_patterns: { description: "File include patterns", type: "array", items: { type: "string" } },
+          exclude_patterns: { description: "File exclude patterns", type: "array", items: { type: "string" } },
+          max_depth: { description: "Max directory depth", type: "integer" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
     {
       name: "generate_diagram",
-      description: "📈 DIAGRAM GENERATION - Creates an architectural diagram with visualization of problems: dependencies between components, problematic connections (circular dependencies marked in red), complexity metrics, architectural layers. For Mermaid returns ready code.",
+      description: "📈 DIAGRAM GENERATION - Creates an architectural diagram.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          diagram_type: {
-            description: "Diagram type: mermaid (default), svg, dot",
-            type: "string",
-            enum: ["mermaid", "svg", "dot"]
-          },
-          include_metrics: {
-            description: "Include quality metrics in the diagram: cyclomatic complexity, coupling, problematic components",
-            type: "boolean"
-          },
-          output_file: {
-            description: "Path to save the diagram (optional)",
-            type: "string"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          diagram_type: { description: "mermaid (default), svg, dot", type: "string", enum: ["mermaid", "svg", "dot"] },
+          include_metrics: { description: "Include quality metrics (rendered by caller)", type: "boolean" },
+          output_file: { description: "Path to save the diagram (optional)", type: "string" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
     },
     {
       name: "get_project_structure",
-      description: "📁 PROJECT STRUCTURE - Hierarchical structure with structural problem detection: incorrect layer organization, mismatch with architectural patterns, files candidates for refactoring (large sizes), metrics by file types.",
+      description: "📁 PROJECT STRUCTURE - Hierarchical structure with structural problem detection.",
       inputSchema: {
         type: "object",
         properties: {
-          project_path: {
-            description: "ABSOLUTE path to the project directory (NO relative paths like '.' or '..' allowed). Example: '/full/path/to/project' or 'C:\\full\\path\\to\\project'",
-            type: "string"
-          },
-          show_metrics: {
-            description: "Include file metrics: size, lines of code, complexity assessment",
-            type: "boolean"
-          },
-          max_files: {
-            description: "Maximum number of files in output (default 1000)",
-            type: "integer"
-          }
+          project_path: { description: "ABSOLUTE or RELATIVE path", type: "string" },
+          show_metrics: { description: "Include file metrics", type: "boolean" },
+          max_files: { description: "Maximum number of files in output (default 1000)", type: "integer" },
+          detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
       }
