@@ -475,6 +475,27 @@ fn env_timeout_ms() -> u64 {
         .unwrap_or(60_000)
 }
 
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
+}
+
+fn heavy_timeout_ms(tool: &str) -> u64 {
+    match tool {
+        // Heaviest: allow longer default (can be overridden by ARCHLENS_TIMEOUT_SUMMARY_MS)
+        "export.ai_summary_json" => env_u64("ARCHLENS_TIMEOUT_SUMMARY_MS", 300_000),
+        // Respect per-tool overrides if provided, otherwise fall back to global
+        "export.ai_compact" => env_u64("ARCHLENS_TIMEOUT_COMPACT_MS", env_timeout_ms()),
+        "graph.build" => env_u64("ARCHLENS_TIMEOUT_GRAPH_MS", env_timeout_ms()),
+        "analyze.project" => env_u64("ARCHLENS_TIMEOUT_ANALYZE_MS", env_timeout_ms()),
+        "structure.get" => env_u64("ARCHLENS_TIMEOUT_STRUCTURE_MS", env_timeout_ms()),
+        "ai.recommend" => env_u64("ARCHLENS_TIMEOUT_RECO_MS", env_timeout_ms()),
+        _ => env_timeout_ms(),
+    }
+}
+
 fn env_cache_ttl_ms() -> u64 {
     std::env::var("ARCHLENS_CACHE_TTL_MS")
         .ok()
@@ -1633,7 +1654,7 @@ async fn main() -> anyhow::Result<()> {
                                 );
                                 if is_heavy {
                                     handled_with_timeout = true;
-                                    let timeout = Duration::from_millis(env_timeout_ms());
+                                    let timeout = Duration::from_millis(heavy_timeout_ms(&normalized));
                                     let method = r.method.clone();
                                     let pclone = r.params.clone();
                                     let delay = env_test_delay_ms();
