@@ -20,7 +20,10 @@ fn http_ai_summary_json_and_presets() {
 
     thread::sleep(Duration::from_millis(400));
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(120_000))
+        .build()
+        .expect("client");
 
     // /presets/list should return array
     // Wait until server is ready
