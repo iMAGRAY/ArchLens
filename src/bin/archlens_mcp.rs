@@ -135,6 +135,83 @@ async fn sse_refresh(State(_): State<HttpState>) -> Sse<impl Stream<Item = Resul
     Sse::new(ReceiverStream::new(rx))
 }
 
+async fn http_tools_list(State(_): State<HttpState>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let tools = tool_list_schema();
+    Ok(Json(serde_json::json!({"tools": tools})))
+}
+
+async fn http_tools_call(State(_): State<HttpState>, Json(obj): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if name.is_empty() { return Err(axum::http::StatusCode::BAD_REQUEST); }
+    let is_heavy = matches!(name.as_str(), "export.ai_compact" | "structure.get" | "graph.build" | "analyze.project");
+    if is_heavy {
+        let timeout = Duration::from_millis(env_timeout_ms());
+        let payload = obj.clone();
+        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
+        match tokio::time::timeout(timeout, handle).await {
+            Ok(joined) => match joined {
+                Ok(Ok(val)) => Ok(Json(val)),
+                Ok(Err(_e)) => Err(axum::http::StatusCode::BAD_REQUEST),
+                Err(_join) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+            },
+            Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
+        }
+    } else {
+        match handle_call("tools/call", Some(obj)) {
+            Ok(val) => Ok(Json(val)),
+            Err(_e) => Err(axum::http::StatusCode::BAD_REQUEST),
+        }
+    }
+}
+
+async fn sse_tools_call(State(_): State<HttpState>, Json(obj): Json<serde_json::Value>) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
+    let (tx, rx) = mpsc::channel::<Result<Event, axum::Error>>(8);
+    tokio::spawn(async move {
+        let _ = tx.send(Ok(Event::default().event("start").data("tools-call-start"))).await;
+        let timeout = Duration::from_millis(env_timeout_ms());
+        let payload = obj.clone();
+        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
+        let res = tokio::time::timeout(timeout, handle).await;
+        match res {
+            Ok(joined) => match joined {
+                Ok(Ok(val)) => {
+                    let text = serde_json::to_string(&val).unwrap_or("{}".into());
+                    let _ = tx.send(Ok(Event::default().event("result").data(text))).await;
+                    let _ = tx.send(Ok(Event::default().event("done").data("ok"))).await;
+                }
+                Ok(Err(e)) => {
+                    let _ = tx.send(Ok(Event::default().event("error").data(e))).await;
+                }
+                Err(e) => {
+                    let _ = tx.send(Ok(Event::default().event("error").data(format!("join error: {}", e)))).await;
+                }
+            },
+            Err(_) => {
+                let _ = tx.send(Ok(Event::default().event("error").data("timeout"))).await;
+            }
+        }
+    });
+    Sse::new(ReceiverStream::new(rx))
+}
+
+fn build_http_router() -> Router {
+    Router::new()
+        .route("/sse/refresh", get(sse_refresh))
+        .route("/export/ai_compact", post(post_export))
+        .route("/export/ai_summary_json", post(post_export_summary))
+        .route("/structure/get", post(post_structure))
+        .route("/diagram/generate", post(post_diagram))
+        .route("/schemas/list", get(get_schemas))
+        .route("/schemas/read", post(post_schema_read))
+        .route("/presets/list", get(get_presets))
+        .route("/ai/recommend", post(get_recommendations))
+        // Official MCP-style HTTP endpoints
+        .route("/tools/list", post(http_tools_list))
+        .route("/tools/call", post(http_tools_call))
+        .route("/tools/call/stream", post(sse_tools_call))
+        .with_state(HttpState)
+}
+
 // Formatting limits
 const SUMMARY_LIMIT_CHARS: usize = 30_000;
 const MAX_OUTPUT_CHARS: usize = 1_000_000;
@@ -422,10 +499,10 @@ async fn post_export_summary(Json(args): Json<AISummaryArgs>) -> Result<Json<ser
                 let etag = content_etag(&txt);
                 if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)})))
+                    Ok(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)})))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -453,9 +530,9 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
                 let etag = content_etag(&text);
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
-                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "text": text})))
+                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -478,7 +555,7 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
         cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
-            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
+            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))?;
     });
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
@@ -487,9 +564,9 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
                 let etag = content_etag(&text);
                 if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                    Ok(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
-                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "diagram_type":"mermaid","text": text})))
+                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                 }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -516,20 +593,6 @@ async fn get_recommendations(Json(payload): Json<serde_json::Value>) -> Result<J
     let focus_opt = payload.get("focus").and_then(|v| v.as_str());
     let result = compute_recommendations(project_path, json_opt, focus_opt);
     Ok(Json(result))
-}
-
-fn build_http_router() -> Router {
-    Router::new()
-        .route("/sse/refresh", get(sse_refresh))
-        .route("/export/ai_compact", post(post_export))
-        .route("/export/ai_summary_json", post(post_export_summary))
-        .route("/structure/get", post(post_structure))
-        .route("/diagram/generate", post(post_diagram))
-        .route("/schemas/list", get(get_schemas))
-        .route("/schemas/read", post(post_schema_read))
-        .route("/presets/list", get(get_presets))
-        .route("/ai/recommend", post(get_recommendations))
-        .with_state(HttpState)
 }
 
 // =============== STDIO JSON-RPC ===============

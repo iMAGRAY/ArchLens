@@ -532,7 +532,7 @@ focus_critical = false
 - Сборка: `cargo build --release --bin archlens-mcp`
 - Транспорты:
   - STDIO (JSON‑RPC): `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
-  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`
+  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /export/ai_summary_json`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`, `POST /tools/list`, `POST /tools/call`, `POST /tools/call/stream`
 - detail_level: `summary` (по умолчанию) | `standard` | `full` — управляет подробностью и бюджетом токенов
 - Переменные окружения: `ARCHLENS_MCP_PORT` (порт HTTP, по умолчанию 5178), `ARCHLENS_TIMEOUT_MS` (таймаут запроса, по умолчанию 60000), `ARCHLENS_TEST_DELAY_MS` (искусственная задержка для тестов), `ARCHLENS_CACHE_TTL_MS` (TTL файлового кеша, по умолчанию 120000), пороги рекомендаций: `ARCHLENS_TH_COMPLEXITY_AVG` (по умолчанию 8.0), `ARCHLENS_TH_COUPLING_INDEX` (0.7), `ARCHLENS_TH_COHESION_INDEX` (0.3), `ARCHLENS_TH_LAYER_IMBALANCE_PCT` (60), `ARCHLENS_TH_HIGH_SEV_CATS` (2)
 - Инвалидация кеша: ключи кеша теперь включают отпечаток проекта: `git rev-parse HEAD` (+ `-dirty` при несохранённых изменениях) или быстрый FS‑отпечаток (число файлов, общий объём, последний mtime), если git недоступен.
