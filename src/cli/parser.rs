@@ -9,6 +9,7 @@ pub enum CliCommand {
         project_path: String,
         verbose: bool,
         include_tests: bool,
+        deep: bool,
     },
     Export { 
         project_path: String, 
@@ -100,12 +101,14 @@ impl ArgParser {
         
         let mut verbose = false;
         let mut include_tests = false;
+        let mut deep = false;
         
         // Парсим флаги
         while let Some(arg) = self.current() {
             match arg.as_str() {
                 "--verbose" | "-v" => verbose = true,
                 "--include-tests" => include_tests = true,
+                "--deep" => deep = true,
                 _ => break,
             }
             self.advance();
@@ -119,6 +122,7 @@ impl ArgParser {
             }),
             verbose,
             include_tests,
+            deep,
         })
     }
     

@@ -657,7 +657,7 @@ function clampText(text, maxChars) {
 
 // 📊 SIMPLIFIED HANDLERS
 async function handleAnalyzeProject(args) {
-  const { project_path, detail_level = 'summary' } = args;
+  const { project_path, detail_level = 'summary', deep = false } = args;
   
   try {
     if (!project_path) {
@@ -672,7 +672,12 @@ async function handleAnalyzeProject(args) {
     // 🔐 SMART MODE: TRY NORMAL EXECUTION FIRST, CHECK ADMIN ONLY IF NEEDED
     // Rust binary gracefully handles access denied errors, so we don't need admin precheck
     
-    const result = await executeArchlensCommand('analyze', resolvedPath);
+    let result;
+    if (deep) {
+      result = await executeArchlensCommand('analyze', resolvedPath, ['--deep']);
+    } else {
+      result = await executeArchlensCommand('analyze', resolvedPath);
+    }
     return createMCPResponse('analyze_project', result, null, resolvedPath, detail_level);
     
   } catch (error) {
@@ -1025,6 +1030,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           include_patterns: { description: "File include patterns", type: "array", items: { type: "string" } },
           exclude_patterns: { description: "File exclude patterns", type: "array", items: { type: "string" } },
           max_depth: { description: "Max directory depth", type: "integer" },
+          deep: { description: "Use full analysis pipeline (CLI analyze --deep)", type: "boolean" },
           detail_level: { description: "summary | standard | full (default: summary)", type: "string", enum: ["summary","standard","full"] }
         },
         required: ["project_path"]
