@@ -7,6 +7,8 @@ use futures_util::Stream;
 use axum::{routing::{get, post}, Router, response::sse::{Event, Sse}, extract::State, Json};
 use std::time::{Duration, Instant};
 use std::thread;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
 use regex::Regex;
@@ -27,6 +29,7 @@ pub struct ExportArgs {
     pub max_output_chars: Option<usize>,
     pub sections: Option<Vec<String>>, // e.g., ["summary","problems_validated","cycles"] or exact headers
     pub top_n: Option<usize>,          // limit list items in sections
+    pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -34,6 +37,7 @@ pub struct StructureArgs {
     pub project_path: String,
     pub detail_level: Option<String>, // summary|standard|full
     pub max_output_chars: Option<usize>,
+    pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -42,6 +46,7 @@ pub struct DiagramArgs {
     pub diagram_type: Option<String>,
     pub detail_level: Option<String>, // summary|standard|full
     pub max_output_chars: Option<usize>,
+    pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,7 +293,12 @@ async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Va
         Ok(joined) => match joined {
             Ok(Ok(md)) => {
                 let txt = format_export_markdown_with_controls(md, &lv, &args.sections, args.top_n, args.max_output_chars);
-                Ok(Json(serde_json::json!({"status":"ok","output": txt})))
+                let etag = content_etag(&txt);
+                if args.etag.as_deref() == Some(&etag) {
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                } else {
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "output": txt})))
+                }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
@@ -313,7 +323,12 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
             Ok(Ok(structure)) => {
                 let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
-                Ok(Json(serde_json::json!({"status":"ok","text": text})))
+                let etag = content_etag(&text);
+                if args.etag.as_deref() == Some(&etag) {
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                } else {
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "text": text})))
+                }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
@@ -342,7 +357,12 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
             Ok(Ok(mmd)) => {
                 let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
-                Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
+                let etag = content_etag(&text);
+                if args.etag.as_deref() == Some(&etag) {
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                } else {
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "diagram_type":"mermaid","text": text})))
+                }
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
@@ -400,18 +420,38 @@ fn tool_list_schema() -> Vec<ToolDescription> {
     ]
 }
 
+fn content_etag(s: &str) -> String {
+    let mut h = DefaultHasher::new();
+    s.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn presets_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("presets") }
+
+fn write_preset(name: &str, json: serde_json::Value) {
+    let dir = presets_dir();
+    let _ = fs::create_dir_all(&dir);
+    let p = dir.join(format!("{}.json", name));
+    let _ = fs::write(p, serde_json::to_vec_pretty(&json).unwrap());
+}
+
 fn list_schema_resources() -> Vec<ResourceDescription> {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let dir = root.join("out").join("schemas");
+    let schemas = root.join("out").join("schemas");
+    let presets = root.join("out").join("presets");
     let mut resources = Vec::new();
-    if let Ok(rd) = fs::read_dir(&dir) {
-        for ent in rd.flatten() {
-            let p = ent.path();
-            if p.extension().and_then(|e| e.to_str()) == Some("json") {
-                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                let abs = p.canonicalize().unwrap_or(p.clone());
-                let uri = format!("file://{}", abs.to_string_lossy());
-                resources.push(ResourceDescription { name, uri, mime: Some("application/schema+json".into()), description: Some("JSON Schema for tool input".into()) });
+    for dir in [schemas, presets] {
+        if let Ok(rd) = fs::read_dir(&dir) {
+            for ent in rd.flatten() {
+                let p = ent.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("json") || p.extension().and_then(|e| e.to_str()) == Some("schema.json") {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                    let abs = p.canonicalize().unwrap_or(p.clone());
+                    let uri = format!("file://{}", abs.to_string_lossy());
+                    let mime = if name.ends_with(".schema.json") { Some("application/schema+json".into()) } else { Some("application/json".into()) };
+                    let description = if dir.ends_with("presets") { Some("AI preset (recommended tool args)".into()) } else { Some("JSON Schema".into()) };
+                    resources.push(ResourceDescription { name, uri, mime, description });
+                }
             }
         }
     }
@@ -422,7 +462,7 @@ fn read_resource_uri(uri: &str) -> Result<(String, String), String> {
     if let Some(path) = uri.strip_prefix("file://") {
         let p = PathBuf::from(path);
         let text = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-        let mime = if p.extension().and_then(|e| e.to_str()) == Some("json") { "application/schema+json" } else { "text/plain" };
+        let mime = if p.extension().and_then(|e| e.to_str()) == Some("json") { "application/json" } else if p.extension().and_then(|e| e.to_str()) == Some("json") { "application/json" } else if p.extension().and_then(|e| e.to_str()) == Some("schema.json") { "application/schema+json" } else { "text/plain" };
         Ok((mime.to_string(), text))
     } else {
         Err("unsupported uri".into())
@@ -442,6 +482,18 @@ fn list_prompts() -> Vec<PromptDescription> {
             description: "Explain detected cycles and propose fixes".into(),
             messages: vec![ PromptMessage{ role: "system".into(), content: "You explain architecture issues clearly.".into() },
                             PromptMessage{ role: "user".into(), content: "Explain cycles and propose refactoring strategies.".into() } ]
+        },
+        PromptDescription {
+            name: "ai.health_check".into(),
+            description: "Ask for a concise health check of the architecture with top risks and quick wins.".into(),
+            messages: vec![ PromptMessage{ role: "system".into(), content: "Be concise, focus on risks and quick wins.".into() },
+                            PromptMessage{ role: "user".into(), content: "Provide a compact health check for the project using the provided analysis.".into() } ]
+        },
+        PromptDescription {
+            name: "ai.refactor.plan".into(),
+            description: "Produce a prioritized refactoring plan given the problems.".into(),
+            messages: vec![ PromptMessage{ role: "system".into(), content: "Provide a pragmatic, risk-aware refactoring plan.".into() },
+                            PromptMessage{ role: "user".into(), content: "Suggest a prioritized refactoring plan for the issues found.".into() } ]
         }
     ]
 }
@@ -486,7 +538,12 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let path = ensure_absolute_path(args.project_path);
                     let out = export::generate_ai_compact(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                     let txt = format_export_markdown_with_controls(out, level(&args.detail_level), &args.sections, args.top_n, args.max_output_chars);
-                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
+                    let etag = content_etag(&txt);
+                    if args.etag.as_deref() == Some(&etag) {
+                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                    } else {
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                    }
                 }
                 "structure.get" => {
                     let args: StructureArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -494,7 +551,12 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let st = stats::get_project_structure(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                     let txt = format_structure_result(path.to_string_lossy().as_ref(), &st, level(&args.detail_level));
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
+                    let etag = content_etag(&txt);
+                    if args.etag.as_deref() == Some(&etag) {
+                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                    } else {
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                    }
                 }
                 "graph.build" => {
                     let args: DiagramArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -503,7 +565,12 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                         .or_else(|_| diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()))?;
                     let txt = format_diagram_text(mmd, path.to_string_lossy().as_ref(), level(&args.detail_level));
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
+                    let etag = content_etag(&txt);
+                    if args.etag.as_deref() == Some(&etag) {
+                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                    } else {
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                    }
                 }
                 "analyze.project" => {
                     let args: AnalyzeArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -514,13 +581,23 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                         let lv = level(&args.detail_level);
                         let txt = clamp_text(&res, if lv=="full" { MAX_OUTPUT_CHARS } else if lv=="standard" { SUMMARY_LIMIT_CHARS * 2 } else { SUMMARY_LIMIT_CHARS });
                         let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                        Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
+                        let etag = content_etag(&txt);
+                        if args.etag.as_deref() == Some(&etag) {
+                            Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                        } else {
+                            Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                        }
                     } else {
                         let s = stats::get_project_stats(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                         let lv = level(&args.detail_level);
                         let txt = format_analysis_result(path.to_string_lossy().as_ref(), &s, lv);
                         let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                        Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
+                        let etag = content_etag(&txt);
+                        if args.etag.as_deref() == Some(&etag) {
+                            Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                        } else {
+                            Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
+                        }
                     }
                 }
                 "arch.refresh" => {
@@ -556,6 +633,19 @@ async fn main() -> anyhow::Result<()> {
     // Output models
     write_schema("model_project_stats", schemars::schema_for!(stats::ProjectStats));
     write_schema("model_project_structure", schemars::schema_for!(stats::ProjectStructure));
+    // Presets (for AI agents)
+    write_preset("health_check", serde_json::json!({
+        "tool": "export.ai_compact",
+        "arguments": {"detail_level":"summary","sections":["summary","problems_validated","cycles"], "top_n": 5, "max_output_chars": 15000}
+    }));
+    write_preset("cycles_focus", serde_json::json!({
+        "tool": "export.ai_compact",
+        "arguments": {"detail_level":"summary","sections":["cycles","top_coupling"], "top_n": 10, "max_output_chars": 20000}
+    }));
+    write_preset("refactor_plan", serde_json::json!({
+        "tool": "export.ai_compact",
+        "arguments": {"detail_level":"standard","sections":["summary","problems_validated","top_complexity_components"], "top_n": 10, "max_output_chars": 30000}
+    }));
 
     // 2) HTTP сервер (Streamable)
     let port: u16 = std::env::var("ARCHLENS_MCP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(5178);
