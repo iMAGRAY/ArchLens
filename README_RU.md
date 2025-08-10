@@ -527,39 +527,46 @@ focus_critical = false
 
 </div>
 
-## 🔌 MCP Сервер на Rust
+## 🔌 MCP Сервер (Rust) — Быстрый старт
 
-- Новый бинарник: `archlens-mcp` (STDIO JSON-RPC + Streamable HTTP/SSE)
+- Сборка: `cargo build --release --bin archlens-mcp`
 - Транспорты:
-  - STDIO: клиент запускает сервер как подпроцесс; методы: `tools/list`, `tools/call`, `resources/list`, `prompts/list`
-  - HTTP (Streamable): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`
-- Инструменты:
-  - `arch.refresh` — обновление контекста
-  - `analyze.project` — анализ (опция `deep: true` для полного пайплайна)
-  - `export.ai_compact` — AI‑компакт отчёт
-  - `structure.get` — структура проекта
-  - `graph.build` — Mermaid диаграмма
-- JSON Schema: автоматически генерируются в `out/schemas/*.schema.json` (через `schemars`), доступны также через HTTP `/schemas/list`.
+  - STDIO (JSON‑RPC): `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
+  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`
+- detail_level: `summary` (по умолчанию) | `standard` | `full` — управляет подробностью и бюджетом токенов
+- Порт HTTP настраивается переменной: `ARCHLENS_MCP_PORT` (по умолчанию 5178)
 
-### Примеры
+Примеры
 
-STDIO:
+STDIO (строки в stdin):
 ```json
 {"jsonrpc":"2.0","id":1,"method":"tools/list"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"structure.get","arguments":{"project_path":"."}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary"}}}
 ```
 
-HTTP:
+HTTP (порт по умолчанию 5178):
 ```bash
-# AI‑compact
-curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":"."}'
+# AI‑compact (summary)
+curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":".","detail_level":"summary"}'
 
-# Структура
-curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":"."}'
+# Структура (standard)
+curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":".","detail_level":"standard"}'
 
-# Диаграмма (Mermaid)
-curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid"}'
+# Диаграмма (full)
+curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"full"}'
 
-# Список схем
-curl -s localhost:5178/schemas/list
+# Схемы
+curl -s localhost:5178/schemas/list | jq
+```
+
+Конфигурация Cursor/Claude (STDIO):
+```json
+{
+  "mcpServers": {
+    "archlens": {
+      "command": "/absolute/path/to/target/release/archlens-mcp",
+      "env": { "ARCHLENS_DEBUG": "false" }
+    }
+  }
+}
 ``` 
