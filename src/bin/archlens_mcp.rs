@@ -2057,7 +2057,11 @@ mod tests {
             .and_then(|v| v.as_array())
             .unwrap_or(&vec![])
             .iter()
-            .filter_map(|r| r.get("tool").and_then(|t| t.as_str()).map(|s| s.to_string()))
+            .filter_map(|r| {
+                r.get("tool")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect()
     }
 
@@ -2151,7 +2155,10 @@ mod tests {
                 }
             }
         }
-        assert!(has_layers, "expected layers section recommendation when imbalance >= threshold");
+        assert!(
+            has_layers,
+            "expected layers section recommendation when imbalance >= threshold"
+        );
     }
 
     #[test]
@@ -2173,7 +2180,10 @@ mod tests {
         let has_prompt = recs
             .iter()
             .any(|r| r.get("prompt").and_then(|p| p.as_str()) == Some("ai.refactor.plan"));
-        assert!(has_prompt, "expected ai.refactor.plan prompt when multiple high-severity categories");
+        assert!(
+            has_prompt,
+            "expected ai.refactor.plan prompt when multiple high-severity categories"
+        );
     }
 
     #[test]
@@ -2183,10 +2193,22 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("a.txt"), b"hello").unwrap();
         let p = dir.canonicalize().unwrap();
-        let k1 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        let k1 = super::export_cache_key(
+            p.to_string_lossy().as_ref(),
+            "summary",
+            &None,
+            Some(5),
+            Some(12345),
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
         fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
-        let k2 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        let k2 = super::export_cache_key(
+            p.to_string_lossy().as_ref(),
+            "summary",
+            &None,
+            Some(5),
+            Some(12345),
+        );
         assert_ne!(k1, k2, "cache key must change when project content changes");
         let _ = fs::remove_dir_all(&dir);
     }
@@ -2198,7 +2220,11 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         for i in 0..3 {
             let p = dir.join(format!("{}.json", i));
-            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "x".repeat(10))).unwrap();
+            fs::write(
+                &p,
+                format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "x".repeat(10)),
+            )
+            .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         super::cache_trim_lru(&dir, Some(2), None);
@@ -2214,7 +2240,11 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         for i in 0..4 {
             let p = dir.join(format!("{}.json", i));
-            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "y".repeat(30))).unwrap();
+            fs::write(
+                &p,
+                format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "y".repeat(30)),
+            )
+            .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         super::cache_trim_lru(&dir, None, Some(70));

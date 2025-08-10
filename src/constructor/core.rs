@@ -143,11 +143,7 @@ impl CapsuleConstructor {
     /// # Returns
     ///
     /// A `Result` containing the created capsule
-    pub fn create_capsule_from_node(
-        &self,
-        node: &ASTElement,
-        file_path: &Path,
-    ) -> Result<Capsule> {
+    pub fn create_capsule_from_node(&self, node: &ASTElement, file_path: &Path) -> Result<Capsule> {
         let id = Uuid::new_v4();
 
         let capsule = Capsule {

@@ -427,9 +427,7 @@ impl Exporter {
         for capsule in graph.capsules.values() {
             cot.push_str(&format!(
                 "- {} ({:?}): сложность {}\n",
-                capsule.name,
-                capsule.capsule_type,
-                capsule.complexity
+                capsule.name, capsule.capsule_type, capsule.complexity
             ));
         }
 
@@ -616,17 +614,17 @@ impl Exporter {
                 *degree.entry(r.from_id).or_insert(0) += 1;
                 *degree.entry(r.to_id).or_insert(0) += 1;
             }
-            let mut items: Vec<(Uuid, usize)> = degree.into_iter().collect();
-            items.sort_by_key(|(_, d)| Reverse(*d));
+            // Map to (name, degree) for deterministic tie-breaking
+            let mut items: Vec<(String, usize)> = degree
+                .into_iter()
+                .filter_map(|(id, d)| graph.capsules.get(&id).map(|c| (c.name.clone(), d)))
+                .collect();
+            // Sort by degree desc, then name asc for stability
+            items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
             items
                 .into_iter()
                 .take(10)
-                .filter_map(|(id, d)| {
-                    graph
-                        .capsules
-                        .get(&id)
-                        .map(|c| serde_json::json!({"component": c.name, "degree": d}))
-                })
+                .map(|(name, d)| serde_json::json!({"component": name, "degree": d}))
                 .collect()
         };
 

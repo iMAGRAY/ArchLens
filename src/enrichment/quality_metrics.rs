@@ -108,10 +108,15 @@ impl QualityMetricsCalculator {
             }
 
             // Добавляем сложность для условий и циклов
-            if trimmed.contains("if ") || trimmed.contains("else if ")
-                || trimmed.contains("for ") || trimmed.contains("while ")
-                || trimmed.contains("match ") || trimmed.contains("switch ")
-                || trimmed.contains("catch ") || trimmed.contains("except ") {
+            if trimmed.contains("if ")
+                || trimmed.contains("else if ")
+                || trimmed.contains("for ")
+                || trimmed.contains("while ")
+                || trimmed.contains("match ")
+                || trimmed.contains("switch ")
+                || trimmed.contains("catch ")
+                || trimmed.contains("except ")
+            {
                 complexity += 1 + nesting_level;
             }
         }

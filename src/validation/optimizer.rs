@@ -29,5 +29,7 @@ impl GraphOptimizer {
 }
 
 impl Default for GraphOptimizer {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

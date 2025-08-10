@@ -15,9 +15,12 @@ pub struct DiffAnalyzer {
 /// Калькулятор влияния изменений
 #[derive(Debug)]
 pub struct ImpactCalculator {
-    #[allow(dead_code)] breaking_change_patterns: Vec<String>,
-    #[allow(dead_code)] major_change_patterns: Vec<String>,
-    #[allow(dead_code)] complexity_change_threshold: f32,
+    #[allow(dead_code)]
+    breaking_change_patterns: Vec<String>,
+    #[allow(dead_code)]
+    major_change_patterns: Vec<String>,
+    #[allow(dead_code)]
+    complexity_change_threshold: f32,
 }
 
 impl DiffAnalyzer {

@@ -30,5 +30,7 @@ impl CohesionValidator {
 }
 
 impl Default for CohesionValidator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

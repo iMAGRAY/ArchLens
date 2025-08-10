@@ -9,6 +9,8 @@ use crate::capsule_graph_builder::CapsuleGraphBuilder;
 #[cfg(feature = "gui")]
 use crate::diff_analyzer::DiffAnalyzer;
 #[cfg(feature = "gui")]
+use crate::exporter::Exporter;
+#[cfg(feature = "gui")]
 use crate::file_scanner::FileScanner;
 #[cfg(feature = "gui")]
 use crate::metadata_extractor::MetadataExtractor;
@@ -17,11 +19,11 @@ use crate::parser_ast::ParserAST;
 #[cfg(feature = "gui")]
 use crate::types::*;
 #[cfg(feature = "gui")]
-use crate::validator_optimizer::ValidatorOptimizer;
-#[cfg(feature = "gui")]
 use crate::types::{AnalysisError, AnalysisResult, CapsuleGraph};
 #[cfg(feature = "gui")]
 use crate::types::{AnalysisResult as _AnalysisResult, CapsuleGraph as _CapsuleGraph};
+#[cfg(feature = "gui")]
+use crate::validator_optimizer::ValidatorOptimizer;
 #[cfg(feature = "gui")]
 use std::collections::HashMap;
 #[cfg(feature = "gui")]
@@ -36,8 +38,6 @@ use std::sync::Mutex;
 use tauri::State;
 #[cfg(feature = "gui")]
 use uuid::Uuid;
-#[cfg(feature = "gui")]
-use crate::exporter::Exporter;
 
 #[cfg(feature = "gui")]
 impl From<AnalysisError> for String {

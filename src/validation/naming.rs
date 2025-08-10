@@ -55,5 +55,7 @@ impl NamingValidator {
 }
 
 impl Default for NamingValidator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

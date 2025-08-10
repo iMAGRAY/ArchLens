@@ -88,11 +88,8 @@ impl CapsuleAnalyzer {
             0.0
         };
 
-        let avg_quality: f64 = capsules
-            .iter()
-            .map(Self::analyze_quality)
-            .sum::<f64>()
-            / total_capsules.max(1) as f64;
+        let avg_quality: f64 =
+            capsules.iter().map(Self::analyze_quality).sum::<f64>() / total_capsules.max(1) as f64;
 
         ProjectMetrics {
             total_capsules,

@@ -40,10 +40,7 @@ fn http_ai_recommend_with_summary() {
 
     // First, get ai_summary_json
     let sum_resp = client
-        .post(&format!(
-            "http://127.0.0.1:{}/export/ai_summary_json",
-            port
-        ))
+        .post(&format!("http://127.0.0.1:{}/export/ai_summary_json", port))
         .json(&serde_json::json!({"project_path":".","top_n":3}))
         .send();
     assert!(sum_resp.is_ok(), "summary POST should succeed");

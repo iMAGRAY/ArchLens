@@ -213,7 +213,8 @@ impl SemanticAnalyzer {
             },
             AntipatternDetector {
                 pattern_name: "Magic Numbers".to_string(),
-                detection_regex: Regex::new(r"(^|[^A-Za-z0-9_.])[0-9]{2,}([^A-Za-z0-9_.]|$)").unwrap(),
+                detection_regex: Regex::new(r"(^|[^A-Za-z0-9_.])[0-9]{2,}([^A-Za-z0-9_.]|$)")
+                    .unwrap(),
                 severity: Priority::Medium,
                 description: "Magic numbers should be replaced with named constants".to_string(),
             },
@@ -551,10 +552,10 @@ impl SemanticEnricher {
         complexity += content.matches("||").count() as u32;
         complexity += content.matches("&&").count() as u32;
 
-                complexity
+        complexity
     }
- 
-     fn calculate_cognitive_complexity(&self, content: &str) -> u32 {
+
+    fn calculate_cognitive_complexity(&self, content: &str) -> u32 {
         // Simplified cognitive complexity calculation
         let mut complexity: u32 = 0;
         let mut nesting_level: i32 = 0;
@@ -573,7 +574,7 @@ impl SemanticEnricher {
                 complexity = complexity.saturating_add((1 + nesting_level) as u32);
             }
         }
-        
+
         complexity
     }
 

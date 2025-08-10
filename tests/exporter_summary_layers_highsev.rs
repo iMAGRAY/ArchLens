@@ -217,7 +217,8 @@ fn normalize(mut v: serde_json::Value) -> serde_json::Value {
             if let Some(val) = summary.get_mut(key) {
                 if let Some(f) = val.as_f64() {
                     let rounded = (f * 10.0).round() / 10.0;
-                    *val = serde_json::Value::Number(serde_json::Number::from_f64(rounded).unwrap());
+                    *val =
+                        serde_json::Value::Number(serde_json::Number::from_f64(rounded).unwrap());
                 }
             }
         }

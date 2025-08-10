@@ -31,10 +31,7 @@ impl CapsuleGraphBuilder {
 
             // Group by layers
             if let Some(layer) = &capsule.layer {
-                layers
-                    .entry(layer.clone())
-                    .or_default()
-                    .push(capsule.id);
+                layers.entry(layer.clone()).or_default().push(capsule.id);
             }
         }
 

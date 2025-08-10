@@ -4,9 +4,11 @@ use std::{thread, time::Duration};
 #[test]
 fn http_export_times_out() {
     // Start server with tiny timeout and artificial delay
+    let port = 5196u16;
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
         .env("ARCHLENS_TIMEOUT_MS", "100")
         .env("ARCHLENS_TEST_DELAY_MS", "500")
+        .env("ARCHLENS_MCP_PORT", format!("{}", port))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -21,8 +23,21 @@ fn http_export_times_out() {
     thread::sleep(Duration::from_millis(300));
     let client = reqwest::blocking::Client::new();
 
+    // Wait until server is ready
+    for _ in 0..20 {
+        if let Ok(resp) = client
+            .get(&format!("http://127.0.0.1:{}/schemas/list", port))
+            .send()
+        {
+            if resp.status().is_success() {
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
     let resp = client
-        .post("http://127.0.0.1:5178/export/ai_compact")
+        .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
         .json(&serde_json::json!({"project_path":"."}))
         .send();
 

@@ -4,7 +4,9 @@ use std::{thread, time::Duration};
 #[test]
 fn http_detail_level_affects_size_and_content() {
     // Start server
+    let port = 5195u16;
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
+        .env("ARCHLENS_MCP_PORT", format!("{}", port))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -19,14 +21,27 @@ fn http_detail_level_affects_size_and_content() {
     thread::sleep(Duration::from_millis(400));
     let client = reqwest::blocking::Client::new();
 
+    // Wait until server is ready
+    for _ in 0..20 {
+        if let Ok(resp) = client
+            .get(&format!("http://127.0.0.1:{}/schemas/list", port))
+            .send()
+        {
+            if resp.status().is_success() {
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
     // export: summary vs full
     let r_sum = client
-        .post("http://127.0.0.1:5178/export/ai_compact")
+        .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
         .json(&serde_json::json!({"project_path":".","detail_level":"summary"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>());
     let r_full = client
-        .post("http://127.0.0.1:5178/export/ai_compact")
+        .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
         .json(&serde_json::json!({"project_path":".","detail_level":"full"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>());
@@ -43,13 +58,13 @@ fn http_detail_level_affects_size_and_content() {
 
     // structure: standard longer than summary
     let st_sum = client
-        .post("http://127.0.0.1:5178/structure/get")
+        .post(&format!("http://127.0.0.1:{}/structure/get", port))
         .json(&serde_json::json!({"project_path":".","detail_level":"summary"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>())
         .ok();
     let st_std = client
-        .post("http://127.0.0.1:5178/structure/get")
+        .post(&format!("http://127.0.0.1:{}/structure/get", port))
         .json(&serde_json::json!({"project_path":".","detail_level":"standard"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>())

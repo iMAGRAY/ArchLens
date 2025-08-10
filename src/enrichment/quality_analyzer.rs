@@ -526,7 +526,8 @@ impl QualityAnalyzer {
         // Look for numeric literals that might be magic numbers
         use regex::Regex;
         // Упростим: числа из 2+ цифр, выделяем вторую группу как само число
-        let magic_number_regex = Regex::new(r"(^|[^A-Za-z0-9_.])([0-9]{2,})([^A-Za-z0-9_.]|$)").unwrap();
+        let magic_number_regex =
+            Regex::new(r"(^|[^A-Za-z0-9_.])([0-9]{2,})([^A-Za-z0-9_.]|$)").unwrap();
 
         // Ignore common non-magic numbers
         let magic_numbers: Vec<String> = magic_number_regex
