@@ -400,6 +400,93 @@ impl Exporter {
         Ok(compact)
     }
 
+    /// Компактный JSON-сводный экспорт для ИИ (структурированный, минимальный)
+    pub fn export_to_ai_summary_json(&self, graph: &CapsuleGraph) -> Result<serde_json::Value> {
+        use std::collections::HashMap;
+        // Summary
+        let mut layers_vec: Vec<(String, usize)> = graph.layers.iter().map(|(k,v)| (k.clone(), v.len())).collect();
+        layers_vec.sort_by_key(|(_, n)| Reverse(*n));
+        let layers: Vec<serde_json::Value> = layers_vec.into_iter().take(8).map(|(name, count)| serde_json::json!({"name":name,"count":count})).collect();
+
+        // Problems (validated)
+        let mut category_counts: HashMap<String, usize> = HashMap::new();
+        let mut category_components: HashMap<String, HashMap<Uuid, usize>> = HashMap::new();
+        let mut category_severity: HashMap<String, (usize, usize, usize)> = HashMap::new();
+        let mut category_suggestion: HashMap<String, String> = HashMap::new();
+        for (id, cap) in &graph.capsules {
+            for w in &cap.warnings {
+                let cat = w.category.clone();
+                *category_counts.entry(cat.clone()).or_insert(0) += 1;
+                let entry = category_components.entry(cat.clone()).or_insert_with(HashMap::new);
+                *entry.entry(*id).or_insert(0) += 1;
+                let sev = category_severity.entry(cat.clone()).or_insert((0,0,0));
+                match w.level {
+                    Priority::High => sev.0 += 1,
+                    Priority::Medium => sev.1 += 1,
+                    Priority::Low => sev.2 += 1,
+                    _ => {}
+                }
+                if category_suggestion.get(&cat).is_none() {
+                    if let Some(sug) = &w.suggestion { if !sug.is_empty() { category_suggestion.insert(cat.clone(), sug.clone()); } }
+                }
+            }
+        }
+        let mut cats: Vec<(String, usize)> = category_counts.into_iter().collect();
+        cats.sort_by_key(|(_, c)| Reverse(*c));
+        let problems_validated: Vec<serde_json::Value> = cats.into_iter().take(6).map(|(cat, cnt)| {
+            let mut comps: Vec<(Uuid, usize)> = category_components.get(&cat).cloned().unwrap_or_default().into_iter().collect();
+            comps.sort_by_key(|(_, n)| Reverse(*n));
+            let top_components: Vec<String> = comps.into_iter().take(3).filter_map(|(cid, _)| graph.capsules.get(&cid).map(|c| c.name.clone())).collect();
+            let sev = category_severity.get(&cat).cloned().unwrap_or((0,0,0));
+            let hint = category_suggestion.get(&cat).cloned();
+            serde_json::json!({"category":cat,"count":cnt,"severity":{"H":sev.0,"M":sev.1,"L":sev.2},"top_components":top_components,"hint":hint})
+        }).collect();
+
+        // Cycles top
+        let cycles_top: Vec<serde_json::Value> = {
+            use crate::graph::CycleDetector;
+            let mut detector = CycleDetector::new();
+            let mut cycles = detector.find_cycles(graph);
+            cycles.sort_by_key(|c| c.len());
+            cycles.into_iter().take(5).map(|cycle| {
+                let names: Vec<String> = cycle.iter().filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone())).collect();
+                serde_json::json!({"path": names})
+            }).collect()
+        };
+
+        // Top coupling
+        let top_coupling: Vec<serde_json::Value> = {
+            let mut degree: HashMap<Uuid, usize> = HashMap::new();
+            for r in &graph.relations { *degree.entry(r.from_id).or_insert(0) += 1; *degree.entry(r.to_id).or_insert(0) += 1; }
+            let mut items: Vec<(Uuid, usize)> = degree.into_iter().collect();
+            items.sort_by_key(|(_, d)| Reverse(*d));
+            items.into_iter().take(10).filter_map(|(id, d)| graph.capsules.get(&id).map(|c| serde_json::json!({"component": c.name, "degree": d}))).collect()
+        };
+
+        // Top complexity components
+        let mut top_cmp: Vec<_> = graph.capsules.values().collect();
+        top_cmp.sort_by_key(|c| Reverse(c.complexity));
+        let top_complexity_components: Vec<serde_json::Value> = top_cmp.into_iter().take(10).map(|c| serde_json::json!({"component": c.name, "type": format!("{:?}", c.capsule_type), "complexity": c.complexity})).collect();
+
+        let summary = serde_json::json!({
+            "components": graph.metrics.total_capsules,
+            "relations": graph.metrics.total_relations,
+            "complexity_avg": graph.metrics.complexity_average,
+            "coupling_index": graph.metrics.coupling_index,
+            "cohesion_index": graph.metrics.cohesion_index,
+            "cyclomatic_complexity": graph.metrics.cyclomatic_complexity,
+            "layers": layers
+        });
+
+        Ok(serde_json::json!({
+            "summary": summary,
+            "problems_validated": problems_validated,
+            "cycles_top": cycles_top,
+            "top_coupling": top_coupling,
+            "top_complexity_components": top_complexity_components
+        }))
+    }
+
     fn build_validated_problems_section(&self, graph: &CapsuleGraph) -> Option<String> {
         use std::collections::HashMap;
         if graph.capsules.is_empty() { return None; }
