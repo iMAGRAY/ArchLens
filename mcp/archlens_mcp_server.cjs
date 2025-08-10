@@ -60,7 +60,8 @@ const CONFIG = {
     maxDepth: 20,
     maxFiles: 1000,
     scanDepth: 15,
-    maxFileSize: 1000000
+    maxFileSize: 1000000,
+    scanTimeout: 30000
   },
   textExtensions: [
     '.rs', '.ts', '.js', '.py', '.java', '.cpp', '.cc', '.cxx', '.c', 
@@ -69,6 +70,9 @@ const CONFIG = {
     '.json', '.yaml', '.yml', '.xml', '.md', '.txt'
   ]
 };
+
+// Cap output to avoid memory bloat and excessive tokens
+const MAX_OUTPUT_CHARS = 1_000_000; // ~1MB
 
 // 🔇 LOGGING WITHOUT SIDE EFFECTS  
 class Logger {
@@ -385,6 +389,10 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '');
       }
       stdout += str;
+      if (stdout.length > MAX_OUTPUT_CHARS) {
+        // Keep tail to preserve latest info
+        stdout = stdout.slice(stdout.length - MAX_OUTPUT_CHARS);
+      }
       });
       
       child.stderr.on('data', (data) => {
@@ -420,6 +428,9 @@ async function executeArchlensCommand(subcommand, projectPath, additionalArgs = 
         str = data.toString('utf8').replace(/[^\x00-\x7F]/g, '?');
       }
       stderr += str;
+      if (stderr.length > MAX_OUTPUT_CHARS) {
+        stderr = stderr.slice(stderr.length - MAX_OUTPUT_CHARS);
+      }
       });
       
       child.on('close', (code) => {
@@ -852,30 +863,36 @@ function createManualStructure(projectPath) {
     files: []
   };
   
+  const start = Date.now();
+  const deadline = start + (CONFIG.limits.scanTimeout || 30000);
+  
   try {
     const scanDirectory = (dir, depth = 0) => {
+      if (Date.now() > deadline) return; // time budget guard
       if (depth > CONFIG.limits.scanDepth) return;
+      if (structure.files.length >= CONFIG.limits.maxFiles) return;
       
       const items = fs.readdirSync(dir);
       
       for (const item of items) {
+        if (Date.now() > deadline) return;
+        if (structure.files.length >= CONFIG.limits.maxFiles) return;
         const fullPath = path.join(dir, item);
         
         try {
-        const stat = fs.statSync(fullPath);
-        
-        if (stat.isDirectory()) {
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
             const skipDirs = ['node_modules', '.git', 'target', 'dist', 'build', '.next', '.nuxt'];
             if (!skipDirs.includes(item) && !item.startsWith('.')) {
-            scanDirectory(fullPath, depth + 1);
-          }
-        } else {
-          const ext = path.extname(item).toLowerCase();
-          const relativePath = path.relative(path.resolve(projectPath), fullPath);
-          
-          structure.total_files++;
-          structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
-          
+              scanDirectory(fullPath, depth + 1);
+            }
+          } else {
+            const ext = path.extname(item).toLowerCase();
+            const relativePath = path.relative(path.resolve(projectPath), fullPath);
+            
+            structure.total_files++;
+            structure.file_types[ext] = (structure.file_types[ext] || 0) + 1;
+            
             if (structure.files.length < CONFIG.limits.maxFiles) {
               let lineCount = 0;
               try {
@@ -888,16 +905,9 @@ function createManualStructure(projectPath) {
                 lineCount = 0;
               }
               
-            structure.files.push({
-              path: relativePath,
-              name: item,
-              extension: ext,
-                size: stat.size,
-                lines: lineCount
-            });
-              
+              structure.files.push({ path: relativePath, name: item, extension: ext, size: stat.size, lines: lineCount });
               structure.total_lines += lineCount;
-          }
+            }
           }
         } catch (statError) {
           logger.debug(`File access error ${fullPath}: ${statError.message}`);
@@ -907,7 +917,6 @@ function createManualStructure(projectPath) {
     
     scanDirectory(projectPath);
     
-    // Determine layers by folder structure
     const commonLayers = ['src', 'lib', 'components', 'utils', 'api', 'core', 'ui', 'services', 'models', 'views', 'controllers'];
     structure.layers = commonLayers.filter(layer => {
       return fs.existsSync(path.join(projectPath, layer));
@@ -922,7 +931,8 @@ function createManualStructure(projectPath) {
     structure,
     project_path: projectPath,
     scanned_at: new Date().toISOString(),
-    method: "manual_scan"
+    method: "manual_scan",
+    duration_ms: Date.now() - start
   };
 }
 
