@@ -414,8 +414,10 @@ async fn main() -> anyhow::Result<()> {
     write_schema("prompt_get_args", schemars::schema_for!(PromptGetArgs));
 
     // 2) HTTP сервер (Streamable)
+    let port: u16 = std::env::var("ARCHLENS_MCP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(5178);
+    let addr = format!("0.0.0.0:{}", port);
     let app = build_http_router();
-    let http = axum::Server::bind(&"0.0.0.0:5178".parse()?)
+    let http = axum::Server::bind(&addr.parse()?)
         .serve(app.into_make_service());
 
     // 3) STDIO JSON-RPC петля
