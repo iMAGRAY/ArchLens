@@ -1,10 +1,3 @@
-use axum::{
-    extract::State,
-    response::sse::{Event, Sse},
-    routing::{get, post},
-    Json, Router,
-};
-use futures_util::Stream;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -20,7 +13,6 @@ use std::{
     path::PathBuf,
 };
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream; // added
 
 use archlens::{
     cli::{self, diagram, export, stats},
@@ -217,135 +209,6 @@ pub struct AIRecommendArgs {
     pub json: Option<serde_json::Value>,
     #[serde(default)]
     pub focus: Option<String>,
-}
-
-#[derive(Clone)]
-struct HttpState;
-
-// =============== HTTP (Streamable) ===============
-async fn sse_refresh(
-    State(_): State<HttpState>,
-) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
-    let (tx, rx) = mpsc::channel::<Result<Event, axum::Error>>(8);
-    tokio::spawn(async move {
-        let _ = tx
-            .send(Ok(Event::default().data("event: refresh-start")))
-            .await;
-        let _ = tx
-            .send(Ok(Event::default().data("event: refresh-done")))
-            .await;
-    });
-    Sse::new(ReceiverStream::new(rx))
-}
-
-async fn http_tools_list(
-    State(_): State<HttpState>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let tools = tool_list_schema();
-    Ok(Json(serde_json::json!({"tools": tools})))
-}
-
-async fn http_tools_call(
-    State(_): State<HttpState>,
-    Json(obj): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if name.is_empty() {
-        return Err(axum::http::StatusCode::BAD_REQUEST);
-    }
-    let normalized = normalize_tool_name(&name);
-    let is_heavy = matches!(
-        normalized.as_str(),
-        "export.ai_compact"
-            | "export.ai_summary_json"
-            | "structure.get"
-            | "graph.build"
-            | "analyze.project"
-            | "ai.recommend"
-    );
-    if is_heavy {
-        let timeout = Duration::from_millis(env_timeout_ms());
-        let payload = obj.clone();
-        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
-        match tokio::time::timeout(timeout, handle).await {
-            Ok(joined) => match joined {
-                Ok(Ok(val)) => Ok(Json(val)),
-                Ok(Err(_e)) => Err(axum::http::StatusCode::BAD_REQUEST),
-                Err(_join) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-            },
-            Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-        }
-    } else {
-        match handle_call("tools/call", Some(obj)) {
-            Ok(val) => Ok(Json(val)),
-            Err(_e) => Err(axum::http::StatusCode::BAD_REQUEST),
-        }
-    }
-}
-
-async fn sse_tools_call(
-    State(_): State<HttpState>,
-    Json(obj): Json<serde_json::Value>,
-) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
-    let (tx, rx) = mpsc::channel::<Result<Event, axum::Error>>(8);
-    tokio::spawn(async move {
-        let _ = tx
-            .send(Ok(Event::default().event("start").data("tools-call-start")))
-            .await;
-        let timeout = Duration::from_millis(env_timeout_ms());
-        let payload = obj.clone();
-        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
-        let res = tokio::time::timeout(timeout, handle).await;
-        match res {
-            Ok(joined) => match joined {
-                Ok(Ok(val)) => {
-                    let text = serde_json::to_string(&val).unwrap_or("{}".into());
-                    let _ = tx
-                        .send(Ok(Event::default().event("result").data(text)))
-                        .await;
-                    let _ = tx.send(Ok(Event::default().event("done").data("ok"))).await;
-                }
-                Ok(Err(e)) => {
-                    let _ = tx.send(Ok(Event::default().event("error").data(e))).await;
-                }
-                Err(e) => {
-                    let _ = tx
-                        .send(Ok(Event::default()
-                            .event("error")
-                            .data(format!("join error: {}", e))))
-                        .await;
-                }
-            },
-            Err(_) => {
-                let _ = tx
-                    .send(Ok(Event::default().event("error").data("timeout")))
-                    .await;
-            }
-        }
-    });
-    Sse::new(ReceiverStream::new(rx))
-}
-
-fn build_http_router() -> Router {
-    Router::new()
-        .route("/sse/refresh", get(sse_refresh))
-        .route("/export/ai_compact", post(post_export))
-        .route("/export/ai_summary_json", post(post_export_summary))
-        .route("/structure/get", post(post_structure))
-        .route("/diagram/generate", post(post_diagram))
-        .route("/schemas/list", get(get_schemas))
-        .route("/schemas/read", post(post_schema_read))
-        .route("/presets/list", get(get_presets))
-        .route("/ai/recommend", post(get_recommendations))
-        // Official MCP-style HTTP endpoints
-        .route("/tools/list", post(http_tools_list))
-        .route("/tools/call", post(http_tools_call))
-        .route("/tools/call/stream", post(sse_tools_call))
-        .with_state(HttpState)
 }
 
 // Formatting limits
@@ -2003,23 +1866,6 @@ async fn main() -> anyhow::Result<()> {
         }),
     );
 
-    // 2) HTTP сервер (Streamable)
-    let http_opt = if env_enable_http() {
-        let port: u16 = std::env::var("ARCHLENS_MCP_PORT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(5178);
-        let addr = ("0.0.0.0".to_string(), port);
-        let app = build_http_router();
-        let http = axum::serve(
-            tokio::net::TcpListener::bind(addr).await?,
-            app.into_make_service(),
-        );
-        Some(http)
-    } else {
-        None
-    };
-
     // 3) STDIO JSON-RPC петля
     let (tx_lines, mut rx_lines) = tokio::sync::mpsc::unbounded_channel::<String>();
     std::thread::spawn(move || {
@@ -2128,15 +1974,9 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    if let Some(http) = http_opt {
-        // Keep HTTP server alive regardless of STDIO state
-        let _ = http.await;
-        Ok(())
-    } else {
-        // HTTP disabled: run STDIO JSON-RPC loop only
-        let _ = stdio.await;
-        Ok(())
-    }
+    // Run STDIO JSON-RPC loop only (HTTP removed)
+    let _ = stdio.await;
+    Ok(())
 }
 
 #[cfg(test)]

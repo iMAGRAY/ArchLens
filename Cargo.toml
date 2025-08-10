@@ -59,7 +59,6 @@ ignore = "0.4"
 tokio = { version = "1.0", features = ["full"] }
 # New deps for MCP server
 schemars = { version = "0.8", features = ["preserve_order"] }
-axum = { version = "0.7", features = ["macros", "json", "http1", "http2"] }
 tokio-stream = "0.1"
 futures-util = "0.3"
 
