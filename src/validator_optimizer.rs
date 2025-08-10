@@ -1,5 +1,5 @@
 /// Validator and optimizer - validates and optimizes capsule graphs
-/// 
+///
 /// This module has been refactored into smaller, focused modules:
 /// - validation/core: Main validator coordination
 /// - validation/complexity: Complexity validation
@@ -11,19 +11,10 @@
 /// - validation/layers: Layer hierarchy validation
 /// - validation/naming: Naming convention validation
 /// - validation/optimizer: Graph optimization
-
 pub use crate::validation::{
-    ValidatorOptimizer,
-    ComplexityValidator,
-    CouplingValidator,
-    CohesionValidator,
-    PatternDetector,
-    SolidAnalyzer,
-    CycleValidator,
-    LayerValidator,
-    NamingValidator,
-    GraphOptimizer,
+    CohesionValidator, ComplexityValidator, CouplingValidator, CycleValidator, GraphOptimizer,
+    LayerValidator, NamingValidator, PatternDetector, SolidAnalyzer, ValidatorOptimizer,
 };
 
 // Re-export for backward compatibility
-pub use crate::validation::core::ValidatorOptimizer as Validator; 
+pub use crate::validation::core::ValidatorOptimizer as Validator;

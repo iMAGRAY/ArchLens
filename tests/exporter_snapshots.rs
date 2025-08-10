@@ -1,8 +1,8 @@
 use archlens::exporter::Exporter;
 use archlens::types::*;
 use chrono::Utc;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 fn build_small_graph() -> CapsuleGraph {
     let id_a = Uuid::new_v4();
@@ -59,8 +59,20 @@ fn build_small_graph() -> CapsuleGraph {
     capsules.insert(id_b, cap_b);
 
     let relations = vec![
-        CapsuleRelation { from_id: id_a, to_id: id_b, relation_type: RelationType::Depends, strength: 0.8, description: Some("A->B".into()) },
-        CapsuleRelation { from_id: id_b, to_id: id_a, relation_type: RelationType::Depends, strength: 0.8, description: Some("B->A".into()) },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("A->B".into()),
+        },
+        CapsuleRelation {
+            from_id: id_b,
+            to_id: id_a,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("B->A".into()),
+        },
     ];
 
     let mut layers = HashMap::new();

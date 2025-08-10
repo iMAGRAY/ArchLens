@@ -1,10 +1,10 @@
+use crate::types::Result;
 use crate::types::*;
+use serde_json;
+use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
-use serde_json;
-use std::collections::HashMap;
-use crate::types::Result;
-use std::cmp::Reverse;
 
 /// Экспортер результатов анализа в различные форматы
 #[derive(Debug)]
@@ -15,15 +15,24 @@ pub struct Exporter {
 
 impl Exporter {
     pub fn new() -> Self {
-        Self { mermaid_theme: "default".to_string() }
+        Self {
+            mermaid_theme: "default".to_string(),
+        }
     }
-    
+
     pub fn with_theme(theme: String) -> Self {
-        Self { mermaid_theme: theme }
+        Self {
+            mermaid_theme: theme,
+        }
     }
-    
+
     /// Основной метод экспорта
-    pub fn export(&self, graph: &CapsuleGraph, format: ExportFormat, output_path: &Path) -> Result<String> {
+    pub fn export(
+        &self,
+        graph: &CapsuleGraph,
+        format: ExportFormat,
+        output_path: &Path,
+    ) -> Result<String> {
         let content = match format {
             ExportFormat::JSON => self.export_to_json(graph)?,
             ExportFormat::YAML => self.export_to_yaml(graph)?,
@@ -47,25 +56,46 @@ impl Exporter {
             .map_err(|e| AnalysisError::GenericError(format!("JSON serialization error: {e}")))?;
         Ok(json)
     }
-    
+
     pub fn export_to_yaml(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut yaml = String::new();
-        
+
         yaml.push_str("# Архитектурный анализ проекта\n");
-        yaml.push_str(&format!("created_at: '{}'\n", graph.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        yaml.push_str(&format!(
+            "created_at: '{}'\n",
+            graph.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
         yaml.push('\n');
-        
+
         // Метрики
         yaml.push_str("metrics:\n");
-        yaml.push_str(&format!("  total_capsules: {}\n", graph.metrics.total_capsules));
-        yaml.push_str(&format!("  total_relations: {}\n", graph.metrics.total_relations));
-        yaml.push_str(&format!("  complexity_average: {:.2}\n", graph.metrics.complexity_average));
-        yaml.push_str(&format!("  coupling_index: {:.2}\n", graph.metrics.coupling_index));
-        yaml.push_str(&format!("  cohesion_index: {:.2}\n", graph.metrics.cohesion_index));
-        yaml.push_str(&format!("  cyclomatic_complexity: {}\n", graph.metrics.cyclomatic_complexity));
+        yaml.push_str(&format!(
+            "  total_capsules: {}\n",
+            graph.metrics.total_capsules
+        ));
+        yaml.push_str(&format!(
+            "  total_relations: {}\n",
+            graph.metrics.total_relations
+        ));
+        yaml.push_str(&format!(
+            "  complexity_average: {:.2}\n",
+            graph.metrics.complexity_average
+        ));
+        yaml.push_str(&format!(
+            "  coupling_index: {:.2}\n",
+            graph.metrics.coupling_index
+        ));
+        yaml.push_str(&format!(
+            "  cohesion_index: {:.2}\n",
+            graph.metrics.cohesion_index
+        ));
+        yaml.push_str(&format!(
+            "  cyclomatic_complexity: {}\n",
+            graph.metrics.cyclomatic_complexity
+        ));
         yaml.push_str(&format!("  depth_levels: {}\n", graph.metrics.depth_levels));
         yaml.push('\n');
-        
+
         // Слои
         yaml.push_str("layers:\n");
         for (layer_name, capsule_ids) in &graph.layers {
@@ -77,17 +107,22 @@ impl Exporter {
                     yaml.push_str(&format!("      - name: '{}'\n", capsule.name));
                     yaml.push_str(&format!("        type: '{:?}'\n", capsule.capsule_type));
                     yaml.push_str(&format!("        complexity: {}\n", capsule.complexity));
-                    yaml.push_str(&format!("        path: '{}'\n", capsule.file_path.display()));
+                    yaml.push_str(&format!(
+                        "        path: '{}'\n",
+                        capsule.file_path.display()
+                    ));
                 }
             }
         }
         yaml.push('\n');
-        
+
         // Связи
         yaml.push_str("relations:\n");
         for relation in &graph.relations {
-            if let (Some(from_capsule), Some(to_capsule)) = 
-                (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
+            if let (Some(from_capsule), Some(to_capsule)) = (
+                graph.capsules.get(&relation.from_id),
+                graph.capsules.get(&relation.to_id),
+            ) {
                 yaml.push_str(&format!("  - from: '{}'\n", from_capsule.name));
                 yaml.push_str(&format!("    to: '{}'\n", to_capsule.name));
                 yaml.push_str(&format!("    type: '{:?}'\n", relation.relation_type));
@@ -97,70 +132,80 @@ impl Exporter {
                 }
             }
         }
-        
+
         Ok(yaml)
     }
-    
+
     pub fn export_to_mermaid(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut mermaid = String::new();
-        
+
         mermaid.push_str("graph TD\n");
-        mermaid.push_str(&format!("    %% Архитектурная диаграмма ({} компонентов)\n", graph.capsules.len()));
+        mermaid.push_str(&format!(
+            "    %% Архитектурная диаграмма ({} компонентов)\n",
+            graph.capsules.len()
+        ));
         mermaid.push('\n');
-        
+
         // Определяем стили для разных типов капсул
         mermaid.push_str("    %% Стили компонентов\n");
         mermaid.push_str("    classDef moduleClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px\n");
-        mermaid.push_str("    classDef functionClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px\n");
+        mermaid
+            .push_str("    classDef functionClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px\n");
         mermaid.push_str("    classDef structClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px\n");
         mermaid.push_str("    classDef classClass fill:#fff3e0,stroke:#e65100,stroke-width:2px\n");
         mermaid.push('\n');
-        
+
         // Группируем по слоям
         for (layer_name, capsule_ids) in &graph.layers {
             mermaid.push_str(&format!("    subgraph \"Слой: {layer_name}\"\n"));
-            
+
             for capsule_id in capsule_ids {
                 if let Some(capsule) = graph.capsules.get(capsule_id) {
                     let node_id = self.sanitize_node_id(&capsule.name);
                     let display_name = self.truncate_name(&capsule.name, 20);
-                    
+
                     match capsule.capsule_type {
                         CapsuleType::Module => {
-                            mermaid.push_str(&format!("        {node_id}[\"📦 {display_name}\"]\n"));
+                            mermaid
+                                .push_str(&format!("        {node_id}[\"📦 {display_name}\"]\n"));
                             mermaid.push_str(&format!("        {node_id}:::moduleClass\n"));
                         }
                         CapsuleType::Function | CapsuleType::Method => {
-                            mermaid.push_str(&format!("        {node_id}[\"⚙️ {display_name}\"]\n"));
+                            mermaid
+                                .push_str(&format!("        {node_id}[\"⚙️ {display_name}\"]\n"));
                             mermaid.push_str(&format!("        {node_id}:::functionClass\n"));
                         }
                         CapsuleType::Struct | CapsuleType::Enum => {
-                            mermaid.push_str(&format!("        {node_id}[\"🏗️ {display_name}\"]\n"));
+                            mermaid
+                                .push_str(&format!("        {node_id}[\"🏗️ {display_name}\"]\n"));
                             mermaid.push_str(&format!("        {node_id}:::structClass\n"));
                         }
                         CapsuleType::Class | CapsuleType::Interface => {
-                            mermaid.push_str(&format!("        {node_id}[\"🎯 {display_name}\"]\n"));
+                            mermaid
+                                .push_str(&format!("        {node_id}[\"🎯 {display_name}\"]\n"));
                             mermaid.push_str(&format!("        {node_id}:::classClass\n"));
                         }
                         _ => {
-                            mermaid.push_str(&format!("        {node_id}[\"⚪ {display_name}\"]\n"));
+                            mermaid
+                                .push_str(&format!("        {node_id}[\"⚪ {display_name}\"]\n"));
                         }
                     }
                 }
             }
-            
+
             mermaid.push_str("    end\n\n");
         }
-        
+
         // Добавляем связи
         mermaid.push_str("    %% Связи между компонентами\n");
         for relation in &graph.relations {
-            if let (Some(from_capsule), Some(to_capsule)) = 
-                (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
-                
+            if let (Some(from_capsule), Some(to_capsule)) = (
+                graph.capsules.get(&relation.from_id),
+                graph.capsules.get(&relation.to_id),
+            ) {
                 let from_id = self.sanitize_node_id(&from_capsule.name);
                 let to_id = self.sanitize_node_id(&to_capsule.name);
-                
+
                 let arrow_style = match relation.relation_type {
                     RelationType::Depends => "-->",
                     RelationType::Uses => "-.->",
@@ -171,23 +216,29 @@ impl Exporter {
                     RelationType::Calls => "-.->",
                     RelationType::References => "-.->",
                 };
-                
-                let label = if relation.strength > 0.7 { "strong" } else if relation.strength > 0.4 { "medium" } else { "weak" };
+
+                let label = if relation.strength > 0.7 {
+                    "strong"
+                } else if relation.strength > 0.4 {
+                    "medium"
+                } else {
+                    "weak"
+                };
                 mermaid.push_str(&format!("    {from_id} {arrow_style}|{label}| {to_id}\n"));
             }
         }
-        
+
         Ok(mermaid)
     }
-    
+
     pub fn export_to_dot(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut dot = String::new();
-        
+
         dot.push_str("digraph architecture {\n");
         dot.push_str("    rankdir=TB;\n");
         dot.push_str("    node [shape=box, style=filled];\n");
         dot.push_str("    edge [fontsize=10];\n\n");
-        
+
         // Определяем цвета для типов
         dot.push_str("    // Стили узлов\n");
         for capsule in graph.capsules.values() {
@@ -198,66 +249,98 @@ impl Exporter {
                 CapsuleType::Class | CapsuleType::Interface => "lightcoral",
                 _ => "lightgray",
             };
-            
+
             let node_id = self.sanitize_node_id(&capsule.name);
-            dot.push_str(&format!("    \"{}\" [fillcolor={}, label=\"{}\"];\n", 
-                                 node_id, color, self.escape_label(&capsule.name)));
+            dot.push_str(&format!(
+                "    \"{}\" [fillcolor={}, label=\"{}\"];\n",
+                node_id,
+                color,
+                self.escape_label(&capsule.name)
+            ));
         }
-        
+
         dot.push_str("\n    // Связи\n");
         for relation in &graph.relations {
-            if let (Some(from_capsule), Some(to_capsule)) = 
-                (graph.capsules.get(&relation.from_id), graph.capsules.get(&relation.to_id)) {
-                
+            if let (Some(from_capsule), Some(to_capsule)) = (
+                graph.capsules.get(&relation.from_id),
+                graph.capsules.get(&relation.to_id),
+            ) {
                 let from_id = self.sanitize_node_id(&from_capsule.name);
                 let to_id = self.sanitize_node_id(&to_capsule.name);
-                
+
                 let style = match relation.relation_type {
                     RelationType::Depends => "solid",
                     RelationType::Uses => "dashed",
                     RelationType::Implements => "bold",
                     _ => "dotted",
                 };
-                
-                dot.push_str(&format!("    \"{}\" -> \"{}\" [style={}, label=\"{:.1}\"];\n", 
-                                     from_id, to_id, style, relation.strength));
+
+                dot.push_str(&format!(
+                    "    \"{}\" -> \"{}\" [style={}, label=\"{:.1}\"];\n",
+                    from_id, to_id, style, relation.strength
+                ));
             }
         }
-        
+
         dot.push_str("}\n");
         Ok(dot)
     }
-    
+
     pub fn export_to_graphml(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut graphml = String::new();
-        
+
         graphml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         graphml.push_str("<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\">\n");
-        graphml.push_str("  <key id=\"name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n");
-        graphml.push_str("  <key id=\"type\" for=\"node\" attr.name=\"type\" attr.type=\"string\"/>\n");
-        graphml.push_str("  <key id=\"complexity\" for=\"node\" attr.name=\"complexity\" attr.type=\"int\"/>\n");
+        graphml.push_str(
+            "  <key id=\"name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n",
+        );
+        graphml.push_str(
+            "  <key id=\"type\" for=\"node\" attr.name=\"type\" attr.type=\"string\"/>\n",
+        );
+        graphml.push_str(
+            "  <key id=\"complexity\" for=\"node\" attr.name=\"complexity\" attr.type=\"int\"/>\n",
+        );
         graphml.push_str("  <key id=\"relation_type\" for=\"edge\" attr.name=\"relation_type\" attr.type=\"string\"/>\n");
-        graphml.push_str("  <key id=\"strength\" for=\"edge\" attr.name=\"strength\" attr.type=\"double\"/>\n");
+        graphml.push_str(
+            "  <key id=\"strength\" for=\"edge\" attr.name=\"strength\" attr.type=\"double\"/>\n",
+        );
         graphml.push_str("  <graph id=\"architecture\" edgedefault=\"directed\">\n");
-        
+
         // Узлы
         for capsule in graph.capsules.values() {
             graphml.push_str(&format!("    <node id=\"{}\">\n", capsule.id));
-            graphml.push_str(&format!("      <data key=\"name\">{}</data>\n", self.escape_xml(&capsule.name)));
-            graphml.push_str(&format!("      <data key=\"type\">{:?}</data>\n", capsule.capsule_type));
-            graphml.push_str(&format!("      <data key=\"complexity\">{}</data>\n", capsule.complexity));
+            graphml.push_str(&format!(
+                "      <data key=\"name\">{}</data>\n",
+                self.escape_xml(&capsule.name)
+            ));
+            graphml.push_str(&format!(
+                "      <data key=\"type\">{:?}</data>\n",
+                capsule.capsule_type
+            ));
+            graphml.push_str(&format!(
+                "      <data key=\"complexity\">{}</data>\n",
+                capsule.complexity
+            ));
             graphml.push_str("    </node>\n");
         }
-        
+
         // Ребра
         for relation in &graph.relations {
-            graphml.push_str(&format!("    <edge source=\"{}\" target=\"{}\">\n", 
-                                     relation.from_id, relation.to_id));
-            graphml.push_str(&format!("      <data key=\"relation_type\">{:?}</data>\n", relation.relation_type));
-            graphml.push_str(&format!("      <data key=\"strength\">{}</data>\n", relation.strength));
+            graphml.push_str(&format!(
+                "    <edge source=\"{}\" target=\"{}\">\n",
+                relation.from_id, relation.to_id
+            ));
+            graphml.push_str(&format!(
+                "      <data key=\"relation_type\">{:?}</data>\n",
+                relation.relation_type
+            ));
+            graphml.push_str(&format!(
+                "      <data key=\"strength\">{}</data>\n",
+                relation.strength
+            ));
             graphml.push_str("    </edge>\n");
         }
-        
+
         graphml.push_str("  </graph>\n");
         graphml.push_str("</graphml>\n");
         Ok(graphml)
@@ -265,28 +348,32 @@ impl Exporter {
 
     pub fn export_to_svg(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut svg = String::new();
-        
+
         svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\" width=\"800\" height=\"600\">\n");
         svg.push_str(&format!("  <text x=\"400\" y=\"50\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"16\">Архитектурная диаграмма</text>\n"));
         svg.push_str(&format!("  <text x=\"400\" y=\"80\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"12\">Компонентов: {}, Связей: {}</text>\n", 
             graph.capsules.len(), graph.relations.len()));
-        
+
         let mut y = 120;
         for capsule in graph.capsules.values() {
             svg.push_str(&format!("  <rect x=\"100\" y=\"{}\" width=\"600\" height=\"30\" fill=\"lightblue\" stroke=\"black\"/>\n", y));
-            svg.push_str(&format!("  <text x=\"110\" y=\"{}\" font-family=\"Arial\" font-size=\"12\">{}</text>\n", y + 20, capsule.name));
+            svg.push_str(&format!(
+                "  <text x=\"110\" y=\"{}\" font-family=\"Arial\" font-size=\"12\">{}</text>\n",
+                y + 20,
+                capsule.name
+            ));
             y += 40;
         }
-        
+
         svg.push_str("</svg>\n");
         Ok(svg)
     }
-    
+
     /// Экспорт в интерактивный HTML
     pub fn export_to_interactive_html(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut html = String::new();
-        
+
         html.push_str("<!DOCTYPE html>\n");
         html.push_str("<html>\n");
         html.push_str("<head>\n");
@@ -298,56 +385,74 @@ impl Exporter {
         html.push_str("</head>\n");
         html.push_str("<body>\n");
         html.push_str("  <h1>Архитектурная диаграмма</h1>\n");
-        html.push_str(&format!("  <p>Компонентов: {}, Связей: {}</p>\n", 
-            graph.capsules.len(), graph.relations.len()));
-        
+        html.push_str(&format!(
+            "  <p>Компонентов: {}, Связей: {}</p>\n",
+            graph.capsules.len(),
+            graph.relations.len()
+        ));
+
         for capsule in graph.capsules.values() {
             html.push_str(&format!("  <div class=\"component\">\n"));
             html.push_str(&format!("    <h3>{}</h3>\n", capsule.name));
             html.push_str(&format!("    <p>Сложность: {}</p>\n", capsule.complexity));
-            html.push_str(&format!("    <p>Файл: {}</p>\n", capsule.file_path.display()));
+            html.push_str(&format!(
+                "    <p>Файл: {}</p>\n",
+                capsule.file_path.display()
+            ));
             html.push_str("  </div>\n");
         }
-        
+
         html.push_str("</body>\n");
         html.push_str("</html>\n");
         Ok(html)
     }
-    
+
     /// Экспорт в формат Chain of Thought
     pub fn export_to_chain_of_thought(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut cot = String::new();
-        
+
         cot.push_str("# Chain of Thought - Анализ архитектуры\n\n");
         cot.push_str(&format!("## Общая информация\n"));
         cot.push_str(&format!("- Компонентов: {}\n", graph.capsules.len()));
         cot.push_str(&format!("- Связей: {}\n", graph.relations.len()));
-        cot.push_str(&format!("- Средняя сложность: {:.2}\n\n", graph.metrics.complexity_average));
-        
+        cot.push_str(&format!(
+            "- Средняя сложность: {:.2}\n\n",
+            graph.metrics.complexity_average
+        ));
+
         cot.push_str("## Компоненты\n");
         for capsule in graph.capsules.values() {
-            cot.push_str(&format!("- {} ({}): сложность {}\n", 
-                capsule.name, format!("{:?}", capsule.capsule_type), capsule.complexity));
+            cot.push_str(&format!(
+                "- {} ({}): сложность {}\n",
+                capsule.name,
+                format!("{:?}", capsule.capsule_type),
+                capsule.complexity
+            ));
         }
-        
+
         Ok(cot)
     }
 
     /// Экспорт в формат LLM Prompt
     pub fn export_to_llm_prompt(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut prompt = String::new();
-        
+
         prompt.push_str("Analyze the following software architecture:\n\n");
         prompt.push_str(&format!("Components: {}\n", graph.capsules.len()));
         prompt.push_str(&format!("Relations: {}\n", graph.relations.len()));
-        prompt.push_str(&format!("Average complexity: {:.2}\n\n", graph.metrics.complexity_average));
-        
+        prompt.push_str(&format!(
+            "Average complexity: {:.2}\n\n",
+            graph.metrics.complexity_average
+        ));
+
         prompt.push_str("Component details:\n");
         for capsule in graph.capsules.values() {
-            prompt.push_str(&format!("- {}: type={:?}, complexity={}\n", 
-                capsule.name, capsule.capsule_type, capsule.complexity));
+            prompt.push_str(&format!(
+                "- {}: type={:?}, complexity={}\n",
+                capsule.name, capsule.capsule_type, capsule.complexity
+            ));
         }
-        
+
         Ok(prompt)
     }
 
@@ -355,24 +460,41 @@ impl Exporter {
     pub fn export_to_ai_compact(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut compact = String::new();
         compact.push_str("# AI Compact Analysis\n\n");
-        compact.push_str(&format!("## Summary\n- Components: {}\n- Relations: {}\n- Complexity(avg): {:.2}\n\n", graph.metrics.total_capsules, graph.metrics.total_relations, graph.metrics.complexity_average));
-        
+        compact.push_str(&format!(
+            "## Summary\n- Components: {}\n- Relations: {}\n- Complexity(avg): {:.2}\n\n",
+            graph.metrics.total_capsules,
+            graph.metrics.total_relations,
+            graph.metrics.complexity_average
+        ));
+
         // Краткие проблемы (эвристики)
         compact.push_str("## Problems (Heuristic)\n");
-        if graph.metrics.coupling_index > 0.7 { compact.push_str("- High coupling\n"); }
-        if graph.metrics.cohesion_index < 0.3 { compact.push_str("- Low cohesion\n"); }
-        if graph.metrics.cyclomatic_complexity > (graph.metrics.total_relations as u32).saturating_add(10) { compact.push_str("- High graph cyclomatic complexity\n"); }
+        if graph.metrics.coupling_index > 0.7 {
+            compact.push_str("- High coupling\n");
+        }
+        if graph.metrics.cohesion_index < 0.3 {
+            compact.push_str("- Low cohesion\n");
+        }
+        if graph.metrics.cyclomatic_complexity
+            > (graph.metrics.total_relations as u32).saturating_add(10)
+        {
+            compact.push_str("- High graph cyclomatic complexity\n");
+        }
         // Подсчёт предупреждений
         let total_warnings: usize = graph.capsules.values().map(|c| c.warnings.len()).sum();
-        if total_warnings > 0 { compact.push_str(&format!("- Warnings: {}\n", total_warnings)); }
-        if compact.ends_with("Heuristic)\n") { compact.push_str("- None\n"); }
+        if total_warnings > 0 {
+            compact.push_str(&format!("- Warnings: {}\n", total_warnings));
+        }
+        if compact.ends_with("Heuristic)\n") {
+            compact.push_str("- None\n");
+        }
         compact.push_str("\n");
-        
+
         // Проблемы по валидаторам (агрегированно)
         if let Some(validated) = self.build_validated_problems_section(graph) {
             compact.push_str(&validated);
         }
-        
+
         // Циклы (топ-5 по длине)
         if let Some(cycles_section) = self.build_cycles_section(graph) {
             compact.push_str(&cycles_section);
@@ -388,14 +510,25 @@ impl Exporter {
         top.sort_by_key(|c| Reverse(c.complexity));
         let top = top.into_iter().take(10);
         compact.push_str("## Top Complexity Components\n");
-        for capsule in top { compact.push_str(&format!("- {} ({:?}) : {}\n", capsule.name, capsule.capsule_type, capsule.complexity)); }
-        
+        for capsule in top {
+            compact.push_str(&format!(
+                "- {} ({:?}) : {}\n",
+                capsule.name, capsule.capsule_type, capsule.complexity
+            ));
+        }
+
         // Краткие слои
         if !graph.layers.is_empty() {
             compact.push_str("\n## Layers\n");
-            let mut layers: Vec<_> = graph.layers.iter().map(|(k,v)| (k.clone(), v.len())).collect();
+            let mut layers: Vec<_> = graph
+                .layers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.len()))
+                .collect();
             layers.sort_by_key(|(_, n)| Reverse(*n));
-            for (name, count) in layers.into_iter().take(8) { compact.push_str(&format!("- {}: {}\n", name, count)); }
+            for (name, count) in layers.into_iter().take(8) {
+                compact.push_str(&format!("- {}: {}\n", name, count));
+            }
         }
         Ok(compact)
     }
@@ -404,9 +537,17 @@ impl Exporter {
     pub fn export_to_ai_summary_json(&self, graph: &CapsuleGraph) -> Result<serde_json::Value> {
         use std::collections::HashMap;
         // Summary
-        let mut layers_vec: Vec<(String, usize)> = graph.layers.iter().map(|(k,v)| (k.clone(), v.len())).collect();
+        let mut layers_vec: Vec<(String, usize)> = graph
+            .layers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.len()))
+            .collect();
         layers_vec.sort_by_key(|(_, n)| Reverse(*n));
-        let layers: Vec<serde_json::Value> = layers_vec.into_iter().take(8).map(|(name, count)| serde_json::json!({"name":name,"count":count})).collect();
+        let layers: Vec<serde_json::Value> = layers_vec
+            .into_iter()
+            .take(8)
+            .map(|(name, count)| serde_json::json!({"name":name,"count":count}))
+            .collect();
 
         // Problems (validated)
         let mut category_counts: HashMap<String, usize> = HashMap::new();
@@ -417,9 +558,11 @@ impl Exporter {
             for w in &cap.warnings {
                 let cat = w.category.clone();
                 *category_counts.entry(cat.clone()).or_insert(0) += 1;
-                let entry = category_components.entry(cat.clone()).or_insert_with(HashMap::new);
+                let entry = category_components
+                    .entry(cat.clone())
+                    .or_insert_with(HashMap::new);
                 *entry.entry(*id).or_insert(0) += 1;
-                let sev = category_severity.entry(cat.clone()).or_insert((0,0,0));
+                let sev = category_severity.entry(cat.clone()).or_insert((0, 0, 0));
                 match w.level {
                     Priority::High => sev.0 += 1,
                     Priority::Medium => sev.1 += 1,
@@ -427,7 +570,11 @@ impl Exporter {
                     _ => {}
                 }
                 if category_suggestion.get(&cat).is_none() {
-                    if let Some(sug) = &w.suggestion { if !sug.is_empty() { category_suggestion.insert(cat.clone(), sug.clone()); } }
+                    if let Some(sug) = &w.suggestion {
+                        if !sug.is_empty() {
+                            category_suggestion.insert(cat.clone(), sug.clone());
+                        }
+                    }
                 }
             }
         }
@@ -448,19 +595,38 @@ impl Exporter {
             let mut detector = CycleDetector::new();
             let mut cycles = detector.find_cycles(graph);
             cycles.sort_by_key(|c| c.len());
-            cycles.into_iter().take(5).map(|cycle| {
-                let names: Vec<String> = cycle.iter().filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone())).collect();
-                serde_json::json!({"path": names})
-            }).collect()
+            cycles
+                .into_iter()
+                .take(5)
+                .map(|cycle| {
+                    let names: Vec<String> = cycle
+                        .iter()
+                        .filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone()))
+                        .collect();
+                    serde_json::json!({"path": names})
+                })
+                .collect()
         };
 
         // Top coupling
         let top_coupling: Vec<serde_json::Value> = {
             let mut degree: HashMap<Uuid, usize> = HashMap::new();
-            for r in &graph.relations { *degree.entry(r.from_id).or_insert(0) += 1; *degree.entry(r.to_id).or_insert(0) += 1; }
+            for r in &graph.relations {
+                *degree.entry(r.from_id).or_insert(0) += 1;
+                *degree.entry(r.to_id).or_insert(0) += 1;
+            }
             let mut items: Vec<(Uuid, usize)> = degree.into_iter().collect();
             items.sort_by_key(|(_, d)| Reverse(*d));
-            items.into_iter().take(10).filter_map(|(id, d)| graph.capsules.get(&id).map(|c| serde_json::json!({"component": c.name, "degree": d}))).collect()
+            items
+                .into_iter()
+                .take(10)
+                .filter_map(|(id, d)| {
+                    graph
+                        .capsules
+                        .get(&id)
+                        .map(|c| serde_json::json!({"component": c.name, "degree": d}))
+                })
+                .collect()
         };
 
         // Top complexity components
@@ -489,7 +655,9 @@ impl Exporter {
 
     fn build_validated_problems_section(&self, graph: &CapsuleGraph) -> Option<String> {
         use std::collections::HashMap;
-        if graph.capsules.is_empty() { return None; }
+        if graph.capsules.is_empty() {
+            return None;
+        }
         let mut category_counts: HashMap<String, usize> = HashMap::new();
         let mut category_components: HashMap<String, HashMap<Uuid, usize>> = HashMap::new();
         let mut category_severity: HashMap<String, (usize, usize, usize)> = HashMap::new(); // High, Med, Low
@@ -498,9 +666,11 @@ impl Exporter {
             for w in &cap.warnings {
                 let cat = w.category.clone();
                 *category_counts.entry(cat.clone()).or_insert(0) += 1;
-                let entry = category_components.entry(cat.clone()).or_insert_with(HashMap::new);
+                let entry = category_components
+                    .entry(cat.clone())
+                    .or_insert_with(HashMap::new);
                 *entry.entry(*id).or_insert(0) += 1;
-                let sev = category_severity.entry(cat.clone()).or_insert((0,0,0));
+                let sev = category_severity.entry(cat.clone()).or_insert((0, 0, 0));
                 match w.level {
                     Priority::High => sev.0 += 1,
                     Priority::Medium => sev.1 += 1,
@@ -508,11 +678,17 @@ impl Exporter {
                     _ => {}
                 }
                 if category_suggestion.get(&cat).is_none() {
-                    if let Some(sug) = &w.suggestion { if !sug.is_empty() { category_suggestion.insert(cat.clone(), sug.clone()); } }
+                    if let Some(sug) = &w.suggestion {
+                        if !sug.is_empty() {
+                            category_suggestion.insert(cat.clone(), sug.clone());
+                        }
+                    }
                 }
             }
         }
-        if category_counts.is_empty() { return None; }
+        if category_counts.is_empty() {
+            return None;
+        }
         // Сортируем категории по количеству
         let mut cats: Vec<(String, usize)> = category_counts.into_iter().collect();
         cats.sort_by_key(|(_, c)| Reverse(*c));
@@ -520,19 +696,53 @@ impl Exporter {
         out.push_str("## Problems (Validated)\n");
         for (cat, cnt) in cats.into_iter().take(6) {
             // Топ-3 компонента для категории
-            let mut comps: Vec<(Uuid, usize)> = category_components.get(&cat).cloned().unwrap_or_default().into_iter().collect();
+            let mut comps: Vec<(Uuid, usize)> = category_components
+                .get(&cat)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
             comps.sort_by_key(|(_, n)| Reverse(*n));
             let mut top_names: Vec<String> = Vec::new();
-            for (cid, _n) in comps.into_iter().take(3) { if let Some(c) = graph.capsules.get(&cid) { top_names.push(c.name.clone()); } }
-            let sev = category_severity.get(&cat).cloned().unwrap_or((0,0,0));
+            for (cid, _n) in comps.into_iter().take(3) {
+                if let Some(c) = graph.capsules.get(&cid) {
+                    top_names.push(c.name.clone());
+                }
+            }
+            let sev = category_severity.get(&cat).cloned().unwrap_or((0, 0, 0));
             let sev_str = format!("H:{} M:{} L:{}", sev.0, sev.1, sev.2);
-            let sug = category_suggestion.get(&cat).map(|s| s.as_str()).unwrap_or("");
+            let sug = category_suggestion
+                .get(&cat)
+                .map(|s| s.as_str())
+                .unwrap_or("");
             if top_names.is_empty() {
-                if sug.is_empty() { out.push_str(&format!("- {}: {} [{}]\n", cat, cnt, sev_str)); }
-                else { out.push_str(&format!("- {}: {} [{}] (hint: {})\n", cat, cnt, sev_str, sug)); }
+                if sug.is_empty() {
+                    out.push_str(&format!("- {}: {} [{}]\n", cat, cnt, sev_str));
+                } else {
+                    out.push_str(&format!(
+                        "- {}: {} [{}] (hint: {})\n",
+                        cat, cnt, sev_str, sug
+                    ));
+                }
             } else {
-                if sug.is_empty() { out.push_str(&format!("- {}: {} [{}] (top: {})\n", cat, cnt, sev_str, top_names.join(", "))); }
-                else { out.push_str(&format!("- {}: {} [{}] (top: {}; hint: {})\n", cat, cnt, sev_str, top_names.join(", "), sug)); }
+                if sug.is_empty() {
+                    out.push_str(&format!(
+                        "- {}: {} [{}] (top: {})\n",
+                        cat,
+                        cnt,
+                        sev_str,
+                        top_names.join(", ")
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "- {}: {} [{}] (top: {}; hint: {})\n",
+                        cat,
+                        cnt,
+                        sev_str,
+                        top_names.join(", "),
+                        sug
+                    ));
+                }
             }
         }
         out.push_str("\n");
@@ -543,7 +753,9 @@ impl Exporter {
         use crate::graph::CycleDetector;
         let mut detector = CycleDetector::new();
         let cycles = detector.find_cycles(graph);
-        if cycles.is_empty() { return None; }
+        if cycles.is_empty() {
+            return None;
+        }
         // Сортируем по длине цикла и берём топ-5
         let mut cycles_sorted = cycles;
         cycles_sorted.sort_by_key(|c| c.len());
@@ -551,11 +763,16 @@ impl Exporter {
         let mut s = String::new();
         s.push_str("## Cycles (Top)\n");
         for cycle in cycles_sorted.into_iter().take(take_n) {
-            let names: Vec<String> = cycle.iter().filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone())).collect();
+            let names: Vec<String> = cycle
+                .iter()
+                .filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone()))
+                .collect();
             if !names.is_empty() {
                 let mut path = names.join(" -> ");
                 // визуально замкнём на первый
-                if let Some(first) = names.first() { path.push_str(&format!(" -> {}", first)); }
+                if let Some(first) = names.first() {
+                    path.push_str(&format!(" -> {}", first));
+                }
                 s.push_str(&format!("- {}\n", path));
             }
         }
@@ -564,13 +781,17 @@ impl Exporter {
     }
 
     fn build_top_coupling_section(&self, graph: &CapsuleGraph) -> Option<String> {
-        if graph.capsules.is_empty() { return None; }
+        if graph.capsules.is_empty() {
+            return None;
+        }
         let mut degree: HashMap<Uuid, usize> = HashMap::new();
         for r in &graph.relations {
             *degree.entry(r.from_id).or_insert(0) += 1;
             *degree.entry(r.to_id).or_insert(0) += 1;
         }
-        if degree.is_empty() { return None; }
+        if degree.is_empty() {
+            return None;
+        }
         let mut items: Vec<(Uuid, usize)> = degree.into_iter().collect();
         items.sort_by_key(|(_, d)| Reverse(*d));
         let mut s = String::new();
@@ -587,23 +808,28 @@ impl Exporter {
     // Вспомогательные методы
     fn sanitize_node_id(&self, name: &str) -> String {
         name.chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect()
     }
-    
+
     fn truncate_name(&self, name: &str, max_len: usize) -> String {
         if name.len() <= max_len {
             name.to_string()
         } else {
-            format!("{}...", &name[..max_len-3])
+            format!("{}...", &name[..max_len - 3])
         }
     }
-    
+
     fn escape_label(&self, text: &str) -> String {
-        text.replace("\"", "\\\"")
-            .replace("\n", "\\n")
+        text.replace("\"", "\\\"").replace("\n", "\\n")
     }
-    
+
     fn escape_xml(&self, text: &str) -> String {
         text.replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -655,9 +881,10 @@ struct JsonRelation {
 impl JsonGraph {
     fn from_capsule_graph(graph: &CapsuleGraph) -> Self {
         let mut layers = std::collections::HashMap::new();
-        
+
         for (layer_name, capsule_ids) in &graph.layers {
-            let layer_capsules: Vec<JsonCapsule> = capsule_ids.iter()
+            let layer_capsules: Vec<JsonCapsule> = capsule_ids
+                .iter()
                 .filter_map(|id| graph.capsules.get(id))
                 .map(|capsule| JsonCapsule {
                     id: capsule.id.to_string(),
@@ -670,8 +897,10 @@ impl JsonGraph {
                 .collect();
             layers.insert(layer_name.clone(), layer_capsules);
         }
-        
-        let relations: Vec<JsonRelation> = graph.relations.iter()
+
+        let relations: Vec<JsonRelation> = graph
+            .relations
+            .iter()
             .filter_map(|relation| {
                 let from_name = graph.capsules.get(&relation.from_id)?.name.clone();
                 let to_name = graph.capsules.get(&relation.to_id)?.name.clone();
@@ -684,7 +913,7 @@ impl JsonGraph {
                 })
             })
             .collect();
-        
+
         Self {
             created_at: graph.created_at.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
             metrics: JsonMetrics {
@@ -706,4 +935,4 @@ impl Default for Exporter {
     fn default() -> Self {
         Self::new()
     }
-} 
+}

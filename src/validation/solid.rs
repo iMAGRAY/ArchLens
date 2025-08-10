@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::types::Result;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct SolidAnalyzer {
@@ -25,10 +25,10 @@ impl SolidAnalyzer {
             violation_threshold: 0.5,
         }
     }
-    
+
     pub fn analyze(&self, capsule: &Capsule) -> Result<Vec<AnalysisWarning>> {
         let mut warnings = Vec::new();
-        
+
         match self.principle {
             SolidPrinciple::SingleResponsibility => {
                 if capsule.complexity > 15 {
@@ -43,7 +43,7 @@ impl SolidAnalyzer {
             }
             _ => {} // Other principles simplified
         }
-        
+
         Ok(warnings)
     }
-} 
+}

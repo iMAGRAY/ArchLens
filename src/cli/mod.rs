@@ -1,16 +1,16 @@
 // Модуль командной строки - организует все CLI подмодули
 
-pub mod parser;
-pub mod handlers;
-pub mod stats;
-pub mod export;
 pub mod diagram;
+pub mod export;
+pub mod handlers;
+pub mod parser;
+pub mod stats;
 
-pub use parser::*;
-pub use handlers::*;
-pub use stats::*;
-pub use export::*;
 pub use diagram::*;
+pub use export::*;
+pub use handlers::*;
+pub use parser::*;
+pub use stats::*;
 
 use std::env;
 
@@ -24,6 +24,6 @@ pub async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     };
-    
+
     handlers::handle_command(command).await
-} 
+}

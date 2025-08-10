@@ -1,15 +1,15 @@
+use std::collections::HashMap;
+use std::fs;
 /// Export functionality - generates various analysis reports
 use std::path::Path;
-use std::fs;
-use std::collections::HashMap;
 
-use crate::file_scanner::FileScanner;
-use crate::parser_ast::ParserAST;
-use crate::metadata_extractor::MetadataExtractor;
 use crate::capsule_constructor::CapsuleConstructor;
 use crate::capsule_graph_builder::CapsuleGraphBuilder;
-use crate::validator_optimizer::ValidatorOptimizer;
 use crate::exporter::Exporter;
+use crate::file_scanner::FileScanner;
+use crate::metadata_extractor::MetadataExtractor;
+use crate::parser_ast::ParserAST;
+use crate::validator_optimizer::ValidatorOptimizer;
 
 /// Generates an AI-readable compact analysis report
 /// Prefer full pipeline for high-quality compact output; fallback to lightweight scan if needed
@@ -31,11 +31,29 @@ pub fn generate_ai_compact(project_path: &str) -> std::result::Result<String, St
 
 fn generate_ai_compact_from_graph(project_path: &str) -> std::result::Result<String, String> {
     let scanner = FileScanner::new(
-        vec!["**/*.rs".into(), "**/*.ts".into(), "**/*.js".into(), "**/*.py".into(), "**/*.java".into(), "**/*.go".into(), "**/*.cpp".into(), "**/*.c".into()],
-        vec!["**/target/**".into(), "**/node_modules/**".into(), "**/.git/**".into(), "**/dist/**".into(), "**/build/**".into()],
+        vec![
+            "**/*.rs".into(),
+            "**/*.ts".into(),
+            "**/*.js".into(),
+            "**/*.py".into(),
+            "**/*.java".into(),
+            "**/*.go".into(),
+            "**/*.cpp".into(),
+            "**/*.c".into(),
+        ],
+        vec![
+            "**/target/**".into(),
+            "**/node_modules/**".into(),
+            "**/.git/**".into(),
+            "**/dist/**".into(),
+            "**/build/**".into(),
+        ],
         Some(10),
-    ).map_err(|e| e.to_string())?;
-    let files = scanner.scan_files(Path::new(project_path)).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
+    let files = scanner
+        .scan_files(Path::new(project_path))
+        .map_err(|e| e.to_string())?;
 
     let mut parser = ParserAST::new().map_err(|e| e.to_string())?;
     let mut all_nodes = Vec::new();
@@ -51,13 +69,18 @@ fn generate_ai_compact_from_graph(project_path: &str) -> std::result::Result<Str
     let mut capsules = Vec::new();
     for file in &files {
         // Привязываем узлы к файлам (простая эвристика по пути)
-        let file_nodes: Vec<_> = all_nodes.iter().filter(|n| file.path.to_string_lossy().contains(&n.name)).collect();
+        let file_nodes: Vec<_> = all_nodes
+            .iter()
+            .filter(|n| file.path.to_string_lossy().contains(&n.name))
+            .collect();
         if file_nodes.is_empty() {
             continue;
         }
         // clone AST elements to own Vec to match &[ASTElement]
         let owned_nodes: Vec<_> = file_nodes.into_iter().cloned().collect();
-        let mut file_caps = constructor.create_capsules(&owned_nodes, &file.path).map_err(|e| e.to_string())?;
+        let mut file_caps = constructor
+            .create_capsules(&owned_nodes, &file.path)
+            .map_err(|e| e.to_string())?;
         capsules.append(&mut file_caps);
     }
 
@@ -69,10 +92,14 @@ fn generate_ai_compact_from_graph(project_path: &str) -> std::result::Result<Str
     let mut graph = builder.build_graph(&capsules).map_err(|e| e.to_string())?;
 
     let validator = ValidatorOptimizer::new();
-    graph = validator.validate_and_optimize(&graph).map_err(|e| e.to_string())?;
+    graph = validator
+        .validate_and_optimize(&graph)
+        .map_err(|e| e.to_string())?;
 
     let exporter = Exporter::new();
-    let compact = exporter.export_to_ai_compact(&graph).map_err(|e| e.to_string())?;
+    let compact = exporter
+        .export_to_ai_compact(&graph)
+        .map_err(|e| e.to_string())?;
     Ok(compact)
 }
 
@@ -82,7 +109,10 @@ fn generate_ai_compact_light(project_path: &str) -> std::result::Result<String, 
     let mut output = String::new();
     output.push_str("# 🏗️ AI COMPACT ARCHITECTURE ANALYSIS\n\n");
     output.push_str(&format!("**Project:** {}\n", project_path));
-    output.push_str(&format!("**Analysis date:** {}\n", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    output.push_str(&format!(
+        "**Analysis date:** {}\n",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    ));
     output.push_str(&format!("**Analysis ID:** {}\n\n", uuid::Uuid::new_v4()));
 
     let stats = collect_basic_stats(project_path)?;
@@ -97,14 +127,24 @@ fn generate_ai_compact_light(project_path: &str) -> std::result::Result<String, 
     let issues = analyze_critical_issues(project_path)?;
     if !issues.is_empty() {
         output.push_str("## 🚨 CRITICAL ISSUES\n");
-        for issue in issues { output.push_str(&format!("- **{}:** {}\n", issue.severity, issue.description)); }
+        for issue in issues {
+            output.push_str(&format!(
+                "- **{}:** {}\n",
+                issue.severity, issue.description
+            ));
+        }
         output.push_str("\n");
     }
 
     let patterns = detect_architectural_patterns(project_path)?;
     if !patterns.is_empty() {
         output.push_str("## 🏛️ ARCHITECTURAL PATTERNS\n");
-        for pattern in patterns { output.push_str(&format!("- **{}:** {} (confidence: {}%)\n", pattern.name, pattern.description, pattern.confidence)); }
+        for pattern in patterns {
+            output.push_str(&format!(
+                "- **{}:** {} (confidence: {}%)\n",
+                pattern.name, pattern.description, pattern.confidence
+            ));
+        }
         output.push_str("\n");
     }
 
@@ -115,22 +155,38 @@ fn generate_ai_compact_light(project_path: &str) -> std::result::Result<String, 
     let modules = analyze_key_modules(project_path)?;
     if !modules.is_empty() {
         output.push_str("## 🔧 KEY MODULES\n");
-        for module in modules { output.push_str(&format!("- **{}** ({}): {}\n", module.name, module.category, module.description)); }
+        for module in modules {
+            output.push_str(&format!(
+                "- **{}** ({}): {}\n",
+                module.name, module.category, module.description
+            ));
+        }
         output.push_str("\n");
     }
 
     let recommendations = generate_recommendations(project_path)?;
     if !recommendations.is_empty() {
         output.push_str("## 💡 RECOMMENDATIONS\n");
-        for rec in recommendations { output.push_str(&format!("- **{}:** {}\n", rec.priority, rec.description)); }
+        for rec in recommendations {
+            output.push_str(&format!("- **{}:** {}\n", rec.priority, rec.description));
+        }
         output.push_str("\n");
     }
 
     let quality = calculate_quality_metrics(project_path)?;
     output.push_str("## 📈 QUALITY METRICS\n");
-    output.push_str(&format!("- **Maintainability index:** {}/100\n", quality.maintainability));
-    output.push_str(&format!("- **Cyclomatic complexity:** {}\n", quality.complexity));
-    output.push_str(&format!("- **Documentation coverage:** {}%\n", quality.documentation_coverage));
+    output.push_str(&format!(
+        "- **Maintainability index:** {}/100\n",
+        quality.maintainability
+    ));
+    output.push_str(&format!(
+        "- **Cyclomatic complexity:** {}\n",
+        quality.complexity
+    ));
+    output.push_str(&format!(
+        "- **Documentation coverage:** {}%\n",
+        quality.documentation_coverage
+    ));
     output.push_str(&format!("- **Tech debt:** {}\n", quality.tech_debt));
     output.push_str("\n---\n*Generated by ArchLens AI Compact Export*\n");
     Ok(output)
@@ -183,11 +239,11 @@ struct QualityMetrics {
 // Helper functions
 fn collect_basic_stats(project_path: &str) -> std::result::Result<CompactStats, String> {
     use super::stats;
-    
+
     let project_stats = stats::get_project_stats(project_path)?;
     let components = project_stats.file_types.values().sum::<usize>();
     let connections = (components * 2) / 3;
-    
+
     Ok(CompactStats {
         total_files: project_stats.total_files,
         total_lines: project_stats.total_lines,
@@ -199,7 +255,7 @@ fn collect_basic_stats(project_path: &str) -> std::result::Result<CompactStats, 
 
 fn analyze_critical_issues(project_path: &str) -> std::result::Result<Vec<CriticalIssue>, String> {
     let mut issues = Vec::new();
-    
+
     let large_files = find_large_files(project_path)?;
     if !large_files.is_empty() {
         issues.push(CriticalIssue {
@@ -207,13 +263,15 @@ fn analyze_critical_issues(project_path: &str) -> std::result::Result<Vec<Critic
             description: format!("Found {} large files (>500 lines)", large_files.len()),
         });
     }
-    
+
     Ok(issues)
 }
 
-fn detect_architectural_patterns(project_path: &str) -> std::result::Result<Vec<ArchitecturalPattern>, String> {
+fn detect_architectural_patterns(
+    project_path: &str,
+) -> std::result::Result<Vec<ArchitecturalPattern>, String> {
     let mut patterns = Vec::new();
-    
+
     if has_modular_structure(project_path)? {
         patterns.push(ArchitecturalPattern {
             name: "Modular".to_string(),
@@ -221,35 +279,39 @@ fn detect_architectural_patterns(project_path: &str) -> std::result::Result<Vec<
             confidence: 90,
         });
     }
-    
+
     Ok(patterns)
 }
 
 fn analyze_project_structure(project_path: &str) -> std::result::Result<String, String> {
     let mut structure = String::new();
     let path = Path::new(project_path);
-    
+
     analyze_directory(path, &mut structure, 0)?;
     Ok(structure)
 }
 
-fn analyze_directory(dir_path: &Path, structure: &mut String, depth: usize) -> std::result::Result<(), String> {
-    let entries = fs::read_dir(dir_path)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
-        
+fn analyze_directory(
+    dir_path: &Path,
+    structure: &mut String,
+    depth: usize,
+) -> std::result::Result<(), String> {
+    let entries = fs::read_dir(dir_path).map_err(|e| format!("Failed to read directory: {}", e))?;
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
-            
+
         if should_skip_directory(name) {
             continue;
         }
-        
+
         let indent = "  ".repeat(depth);
-        
+
         if path.is_dir() {
             structure.push_str(&format!("{}📁 {}/\n", indent, name));
             if depth < 3 {
@@ -259,13 +321,13 @@ fn analyze_directory(dir_path: &Path, structure: &mut String, depth: usize) -> s
             structure.push_str(&format!("{}📄 {}\n", indent, name));
         }
     }
-    
+
     Ok(())
 }
 
 fn analyze_key_modules(project_path: &str) -> std::result::Result<Vec<KeyModule>, String> {
     let mut modules = Vec::new();
-    
+
     if Path::new(&format!("{}/Cargo.toml", project_path)).exists() {
         modules.push(KeyModule {
             name: "Rust Project".to_string(),
@@ -273,7 +335,7 @@ fn analyze_key_modules(project_path: &str) -> std::result::Result<Vec<KeyModule>
             description: "Main Rust project".to_string(),
         });
     }
-    
+
     if Path::new(&format!("{}/src/main.rs", project_path)).exists() {
         modules.push(KeyModule {
             name: "Main Entry".to_string(),
@@ -281,13 +343,15 @@ fn analyze_key_modules(project_path: &str) -> std::result::Result<Vec<KeyModule>
             description: "Application entry point".to_string(),
         });
     }
-    
+
     Ok(modules)
 }
 
-fn generate_recommendations(project_path: &str) -> std::result::Result<Vec<Recommendation>, String> {
+fn generate_recommendations(
+    project_path: &str,
+) -> std::result::Result<Vec<Recommendation>, String> {
     let mut recommendations = Vec::new();
-    
+
     let large_files = find_large_files(project_path)?;
     if !large_files.is_empty() {
         recommendations.push(Recommendation {
@@ -295,7 +359,7 @@ fn generate_recommendations(project_path: &str) -> std::result::Result<Vec<Recom
             description: "Split large files into smaller modules".to_string(),
         });
     }
-    
+
     Ok(recommendations)
 }
 
@@ -304,7 +368,7 @@ fn calculate_quality_metrics(project_path: &str) -> std::result::Result<QualityM
     let complexity = estimate_complexity(project_path)?;
     let documentation_coverage = estimate_documentation_coverage(project_path)?;
     let tech_debt = estimate_tech_debt(project_path)?;
-    
+
     Ok(QualityMetrics {
         maintainability,
         complexity,
@@ -316,32 +380,30 @@ fn calculate_quality_metrics(project_path: &str) -> std::result::Result<QualityM
 fn find_large_files(project_path: &str) -> std::result::Result<Vec<String>, String> {
     let mut large_files = Vec::new();
     let path = Path::new(project_path);
-    
+
     scan_for_large_files(path, &mut large_files)?;
     Ok(large_files)
 }
 
-fn scan_for_large_files(dir: &Path, large_files: &mut Vec<String>) -> std::result::Result<(), String> {
-    let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
-        
+fn scan_for_large_files(
+    dir: &Path,
+    large_files: &mut Vec<String>,
+) -> std::result::Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
-        
+
         if path.is_dir() {
-            let name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-                
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
             if !should_skip_directory(name) {
                 scan_for_large_files(&path, large_files)?;
             }
         } else if path.is_file() {
-            let name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-                
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
             if is_code_file(path.extension().and_then(|e| e.to_str()).unwrap_or("")) {
                 if let Ok(content) = fs::read_to_string(&path) {
                     let line_count = content.lines().count();
@@ -352,7 +414,7 @@ fn scan_for_large_files(dir: &Path, large_files: &mut Vec<String>) -> std::resul
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -362,87 +424,94 @@ fn has_modular_structure(project_path: &str) -> std::result::Result<bool, String
     if !src_path.exists() {
         return Ok(false);
     }
-    
+
     let mut module_count = 0;
-    let entries = fs::read_dir(src_path)
-        .map_err(|e| format!("Failed to read src directory: {}", e))?;
-        
+    let entries =
+        fs::read_dir(src_path).map_err(|e| format!("Failed to read src directory: {}", e))?;
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
-        
+
         if path.is_dir() {
-            let name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-                
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
             if !should_skip_directory(name) {
                 module_count += 1;
             }
         }
     }
-    
+
     Ok(module_count >= 3)
 }
 
 fn estimate_maintainability(project_path: &str) -> std::result::Result<u8, String> {
     let mut score = 100u8;
-    
+
     let large_files = find_large_files(project_path)?;
     if !large_files.is_empty() {
         score = score.saturating_sub(large_files.len() as u8 * 5);
     }
-    
+
     Ok(score.max(30))
 }
 
 fn estimate_complexity(project_path: &str) -> std::result::Result<u8, String> {
     let mut complexity = 5u8;
-    
+
     let large_files = find_large_files(project_path)?;
     complexity += large_files.len() as u8;
-    
+
     Ok(complexity.min(20))
 }
 
 fn estimate_documentation_coverage(project_path: &str) -> std::result::Result<u8, String> {
     let mut coverage = 50u8;
-    
+
     if Path::new(&format!("{}/README.md", project_path)).exists() {
         coverage += 20;
     }
-    
+
     if Path::new(&format!("{}/docs", project_path)).exists() {
         coverage += 15;
     }
-    
+
     Ok(coverage.min(100))
 }
 
 fn estimate_tech_debt(project_path: &str) -> std::result::Result<String, String> {
     let large_files = find_large_files(project_path)?;
     let debt_level = large_files.len();
-    
+
     let debt_description = match debt_level {
         0..=2 => "Low",
-        3..=5 => "Medium", 
+        3..=5 => "Medium",
         6..=10 => "High",
         _ => "Critical",
     };
-    
+
     Ok(debt_description.to_string())
 }
 
 fn should_skip_directory(dir_name: &str) -> bool {
-    matches!(dir_name, "node_modules" | "target" | ".git" | ".idea" | ".vscode" | "dist" | "build")
+    matches!(
+        dir_name,
+        "node_modules" | "target" | ".git" | ".idea" | ".vscode" | "dist" | "build"
+    )
 }
 
 fn is_important_file(filename: &str) -> bool {
-    filename.ends_with(".rs") || filename.ends_with(".toml") || 
-    filename.ends_with(".md") || filename.ends_with(".json") ||
-    filename == "Cargo.toml" || filename == "README.md"
+    filename.ends_with(".rs")
+        || filename.ends_with(".toml")
+        || filename.ends_with(".md")
+        || filename.ends_with(".json")
+        || filename == "Cargo.toml"
+        || filename == "README.md"
 }
 
 fn is_code_file(ext: &str) -> bool {
-    matches!(ext, "rs" | "js" | "ts" | "py" | "java" | "cpp" | "c" | "h" | "go" | "rb" | "php")
-} 
+    matches!(
+        ext,
+        "rs" | "js" | "ts" | "py" | "java" | "cpp" | "c" | "h" | "go" | "rb" | "php"
+    )
+}

@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::types::Result;
+use crate::types::*;
 
 #[derive(Debug)]
 pub struct CohesionValidator {
@@ -10,8 +10,12 @@ impl CohesionValidator {
     pub fn new() -> Self {
         Self { threshold: 0.3 }
     }
-    
-    pub fn validate(&self, graph: &CapsuleGraph, warnings: &mut Vec<AnalysisWarning>) -> Result<()> {
+
+    pub fn validate(
+        &self,
+        graph: &CapsuleGraph,
+        warnings: &mut Vec<AnalysisWarning>,
+    ) -> Result<()> {
         if graph.metrics.cohesion_index < self.threshold {
             warnings.push(AnalysisWarning {
                 level: Priority::Medium,
@@ -23,4 +27,4 @@ impl CohesionValidator {
         }
         Ok(())
     }
-} 
+}

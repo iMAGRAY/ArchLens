@@ -1,5 +1,5 @@
-use archlens::types::*;
 use archlens::exporter::Exporter;
+use archlens::types::*;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -88,10 +88,34 @@ fn build_test_graph() -> CapsuleGraph {
     capsules.insert(id_hub, cap_hub);
 
     let relations = vec![
-        CapsuleRelation { from_id: id_a, to_id: id_b, relation_type: RelationType::Depends, strength: 0.8, description: Some("A->B".into()) },
-        CapsuleRelation { from_id: id_b, to_id: id_a, relation_type: RelationType::Depends, strength: 0.8, description: Some("B->A".into()) },
-        CapsuleRelation { from_id: id_hub, to_id: id_a, relation_type: RelationType::Depends, strength: 0.9, description: Some("Hub->A".into()) },
-        CapsuleRelation { from_id: id_hub, to_id: id_b, relation_type: RelationType::Depends, strength: 0.9, description: Some("Hub->B".into()) },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("A->B".into()),
+        },
+        CapsuleRelation {
+            from_id: id_b,
+            to_id: id_a,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("B->A".into()),
+        },
+        CapsuleRelation {
+            from_id: id_hub,
+            to_id: id_a,
+            relation_type: RelationType::Depends,
+            strength: 0.9,
+            description: Some("Hub->A".into()),
+        },
+        CapsuleRelation {
+            from_id: id_hub,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.9,
+            description: Some("Hub->B".into()),
+        },
     ];
 
     let mut layers = HashMap::new();

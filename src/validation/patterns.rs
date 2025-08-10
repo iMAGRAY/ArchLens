@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::types::Result;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct ArchitecturePatternDetector {
@@ -26,8 +26,12 @@ impl PatternDetector {
             detectors: Self::create_pattern_detectors(),
         }
     }
-    
-    pub fn validate(&self, graph: &CapsuleGraph, warnings: &mut Vec<AnalysisWarning>) -> Result<()> {
+
+    pub fn validate(
+        &self,
+        graph: &CapsuleGraph,
+        warnings: &mut Vec<AnalysisWarning>,
+    ) -> Result<()> {
         for detector in &self.detectors {
             // Simplified pattern detection
             if detector.pattern_name == "God Object" {
@@ -38,7 +42,9 @@ impl PatternDetector {
                             message: format!("Potential God Object: {}", capsule.name),
                             category: "pattern".to_string(),
                             capsule_id: Some(capsule.id),
-                            suggestion: Some("Break down into smaller, focused classes".to_string()),
+                            suggestion: Some(
+                                "Break down into smaller, focused classes".to_string(),
+                            ),
                         });
                     }
                 }
@@ -46,20 +52,16 @@ impl PatternDetector {
         }
         Ok(())
     }
-    
+
     fn create_pattern_detectors() -> Vec<ArchitecturePatternDetector> {
-        vec![
-            ArchitecturePatternDetector {
-                pattern_name: "God Object".to_string(),
-                detection_criteria: vec![
-                    PatternCriteria {
-                        name: "High Complexity".to_string(),
-                        weight: 0.8,
-                        matcher: "complexity > 20".to_string(),
-                    }
-                ],
-                confidence_threshold: 0.7,
-            }
-        ]
+        vec![ArchitecturePatternDetector {
+            pattern_name: "God Object".to_string(),
+            detection_criteria: vec![PatternCriteria {
+                name: "High Complexity".to_string(),
+                weight: 0.8,
+                matcher: "complexity > 20".to_string(),
+            }],
+            confidence_threshold: 0.7,
+        }]
     }
-} 
+}

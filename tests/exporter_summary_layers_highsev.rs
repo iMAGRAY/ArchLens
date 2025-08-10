@@ -1,8 +1,8 @@
 use archlens::exporter::Exporter;
 use archlens::types::*;
 use chrono::Utc;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 fn build_graph_layers_highsev() -> CapsuleGraph {
     // Four modules: A,B,C,D with specific complexities and layers
@@ -24,7 +24,13 @@ fn build_graph_layers_highsev() -> CapsuleGraph {
         layer: Some("Core".into()),
         summary: None,
         description: None,
-        warnings: vec![AnalysisWarning{ message: "High complexity".into(), level: Priority::High, category: "complexity".into(), capsule_id: Some(id_a), suggestion: Some("reduce complexity".into()) }],
+        warnings: vec![AnalysisWarning {
+            message: "High complexity".into(),
+            level: Priority::High,
+            category: "complexity".into(),
+            capsule_id: Some(id_a),
+            suggestion: Some("reduce complexity".into()),
+        }],
         status: CapsuleStatus::Active,
         priority: Priority::Medium,
         tags: vec![],
@@ -48,7 +54,13 @@ fn build_graph_layers_highsev() -> CapsuleGraph {
         layer: Some("Infra".into()),
         summary: None,
         description: None,
-        warnings: vec![AnalysisWarning{ message: "Tight coupling".into(), level: Priority::High, category: "coupling".into(), capsule_id: Some(id_b), suggestion: Some("decouple".into()) }],
+        warnings: vec![AnalysisWarning {
+            message: "Tight coupling".into(),
+            level: Priority::High,
+            category: "coupling".into(),
+            capsule_id: Some(id_b),
+            suggestion: Some("decouple".into()),
+        }],
         status: CapsuleStatus::Active,
         priority: Priority::Medium,
         tags: vec![],
@@ -72,7 +84,13 @@ fn build_graph_layers_highsev() -> CapsuleGraph {
         layer: Some("Core".into()),
         summary: None,
         description: None,
-        warnings: vec![AnalysisWarning{ message: "Complexity rising".into(), level: Priority::Medium, category: "complexity".into(), capsule_id: Some(id_c), suggestion: None }],
+        warnings: vec![AnalysisWarning {
+            message: "Complexity rising".into(),
+            level: Priority::Medium,
+            category: "complexity".into(),
+            capsule_id: Some(id_c),
+            suggestion: None,
+        }],
         status: CapsuleStatus::Active,
         priority: Priority::Medium,
         tags: vec![],
@@ -114,13 +132,55 @@ fn build_graph_layers_highsev() -> CapsuleGraph {
     capsules.insert(id_d, cap_d);
 
     let relations = vec![
-        CapsuleRelation { from_id: id_a, to_id: id_b, relation_type: RelationType::Depends, strength: 0.9, description: Some("A->B".into()) },
-        CapsuleRelation { from_id: id_a, to_id: id_c, relation_type: RelationType::Depends, strength: 0.8, description: Some("A->C".into()) },
-        CapsuleRelation { from_id: id_a, to_id: id_d, relation_type: RelationType::Depends, strength: 0.7, description: Some("A->D".into()) },
-        CapsuleRelation { from_id: id_b, to_id: id_c, relation_type: RelationType::Depends, strength: 0.6, description: Some("B->C".into()) },
-        CapsuleRelation { from_id: id_c, to_id: id_d, relation_type: RelationType::Depends, strength: 0.5, description: Some("C->D".into()) },
-        CapsuleRelation { from_id: id_d, to_id: id_a, relation_type: RelationType::Depends, strength: 0.9, description: Some("D->A".into()) },
-        CapsuleRelation { from_id: id_d, to_id: id_b, relation_type: RelationType::Depends, strength: 0.9, description: Some("D->B".into()) },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.9,
+            description: Some("A->B".into()),
+        },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_c,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("A->C".into()),
+        },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_d,
+            relation_type: RelationType::Depends,
+            strength: 0.7,
+            description: Some("A->D".into()),
+        },
+        CapsuleRelation {
+            from_id: id_b,
+            to_id: id_c,
+            relation_type: RelationType::Depends,
+            strength: 0.6,
+            description: Some("B->C".into()),
+        },
+        CapsuleRelation {
+            from_id: id_c,
+            to_id: id_d,
+            relation_type: RelationType::Depends,
+            strength: 0.5,
+            description: Some("C->D".into()),
+        },
+        CapsuleRelation {
+            from_id: id_d,
+            to_id: id_a,
+            relation_type: RelationType::Depends,
+            strength: 0.9,
+            description: Some("D->A".into()),
+        },
+        CapsuleRelation {
+            from_id: id_d,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.9,
+            description: Some("D->B".into()),
+        },
     ];
 
     let mut layers = HashMap::new();
@@ -137,26 +197,50 @@ fn build_graph_layers_highsev() -> CapsuleGraph {
         depth_levels: 3,
     };
 
-    CapsuleGraph { capsules, relations, layers, metrics, created_at: Utc::now(), previous_analysis: None }
+    CapsuleGraph {
+        capsules,
+        relations,
+        layers,
+        metrics,
+        created_at: Utc::now(),
+        previous_analysis: None,
+    }
 }
 
 fn normalize(mut v: serde_json::Value) -> serde_json::Value {
-    if let Some(obj) = v.as_object_mut() { obj.remove("cycles_top"); }
+    if let Some(obj) = v.as_object_mut() {
+        obj.remove("cycles_top");
+    }
     if let Some(summary) = v.get_mut("summary").and_then(|s| s.as_object_mut()) {
         if let Some(layers) = summary.get_mut("layers").and_then(|l| l.as_array_mut()) {
-            layers.sort_by(|a, b| a.get("name").and_then(|x| x.as_str()).cmp(&b.get("name").and_then(|x| x.as_str())));
+            layers.sort_by(|a, b| {
+                a.get("name")
+                    .and_then(|x| x.as_str())
+                    .cmp(&b.get("name").and_then(|x| x.as_str()))
+            });
         }
     }
-    if let Some(arr) = v.get_mut("problems_validated").and_then(|x| x.as_array_mut()) {
+    if let Some(arr) = v
+        .get_mut("problems_validated")
+        .and_then(|x| x.as_array_mut())
+    {
         for e in arr.iter_mut() {
             if let Some(tc) = e.get_mut("top_components").and_then(|x| x.as_array_mut()) {
                 tc.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
             }
         }
-        arr.sort_by(|a, b| a.get("category").and_then(|x| x.as_str()).cmp(&b.get("category").and_then(|x| x.as_str())));
+        arr.sort_by(|a, b| {
+            a.get("category")
+                .and_then(|x| x.as_str())
+                .cmp(&b.get("category").and_then(|x| x.as_str()))
+        });
     }
     if let Some(arr) = v.get_mut("top_coupling").and_then(|x| x.as_array_mut()) {
-        arr.sort_by(|a, b| a.get("component").and_then(|x| x.as_str()).cmp(&b.get("component").and_then(|x| x.as_str())));
+        arr.sort_by(|a, b| {
+            a.get("component")
+                .and_then(|x| x.as_str())
+                .cmp(&b.get("component").and_then(|x| x.as_str()))
+        });
     }
     v
 }
@@ -168,9 +252,14 @@ fn snapshot_ai_summary_json_layers_highsev_matches_golden_norm() {
     let actual = exporter.export_to_ai_summary_json(&g).expect("ok");
     let actual_norm = normalize(actual);
 
-    let golden_text = std::fs::read_to_string("tests/golden/ai_summary_layers_highsev.json").expect("read golden");
+    let golden_text = std::fs::read_to_string("tests/golden/ai_summary_layers_highsev.json")
+        .expect("read golden");
     let golden: serde_json::Value = serde_json::from_str(&golden_text).expect("parse golden");
     let golden_norm = normalize(golden);
 
-    assert_eq!(actual_norm, golden_norm, "summary_json should match golden (normalized)\nactual: {}\nexpected: {}", actual_norm, golden_norm);
+    assert_eq!(
+        actual_norm, golden_norm,
+        "summary_json should match golden (normalized)\nactual: {}\nexpected: {}",
+        actual_norm, golden_norm
+    );
 }

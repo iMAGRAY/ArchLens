@@ -7,7 +7,8 @@ fn http_export_and_schemas() {
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn() {
+        .spawn()
+    {
         Ok(c) => c,
         Err(_) => {
             eprintln!("archlens-mcp not built; skipping http e2e");

@@ -1,8 +1,8 @@
 use archlens::exporter::Exporter;
 use archlens::types::*;
 use chrono::Utc;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 fn build_small_graph() -> CapsuleGraph {
     let id_a = Uuid::new_v4();
@@ -57,8 +57,20 @@ fn build_small_graph() -> CapsuleGraph {
     capsules.insert(id_a, cap_a);
     capsules.insert(id_b, cap_b);
     let relations = vec![
-        CapsuleRelation { from_id: id_a, to_id: id_b, relation_type: RelationType::Depends, strength: 0.8, description: Some("A->B".into()) },
-        CapsuleRelation { from_id: id_b, to_id: id_a, relation_type: RelationType::Depends, strength: 0.8, description: Some("B->A".into()) },
+        CapsuleRelation {
+            from_id: id_a,
+            to_id: id_b,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("A->B".into()),
+        },
+        CapsuleRelation {
+            from_id: id_b,
+            to_id: id_a,
+            relation_type: RelationType::Depends,
+            strength: 0.8,
+            description: Some("B->A".into()),
+        },
     ];
     let mut layers = HashMap::new();
     layers.insert("Core".to_string(), vec![id_a, id_b]);
@@ -71,7 +83,14 @@ fn build_small_graph() -> CapsuleGraph {
         cyclomatic_complexity: 4,
         depth_levels: 2,
     };
-    CapsuleGraph { capsules, relations, layers, metrics, created_at: Utc::now(), previous_analysis: None }
+    CapsuleGraph {
+        capsules,
+        relations,
+        layers,
+        metrics,
+        created_at: Utc::now(),
+        previous_analysis: None,
+    }
 }
 
 #[test]
@@ -81,13 +100,22 @@ fn snapshot_ai_summary_json_matches_golden_ignoring_cycles() {
     let actual = exporter.export_to_ai_summary_json(&g).expect("ok");
 
     // Load golden
-    let golden_text = std::fs::read_to_string("tests/golden/ai_summary_small.json").expect("read golden");
+    let golden_text =
+        std::fs::read_to_string("tests/golden/ai_summary_small.json").expect("read golden");
     let mut golden: serde_json::Value = serde_json::from_str(&golden_text).expect("parse golden");
 
     // Normalize: remove cycles_top for stability
     let mut actual_norm = actual.clone();
-    if let Some(obj) = actual_norm.as_object_mut() { obj.remove("cycles_top"); }
-    if let Some(obj) = golden.as_object_mut() { obj.remove("cycles_top"); }
+    if let Some(obj) = actual_norm.as_object_mut() {
+        obj.remove("cycles_top");
+    }
+    if let Some(obj) = golden.as_object_mut() {
+        obj.remove("cycles_top");
+    }
 
-    assert_eq!(actual_norm, golden, "summary_json should match golden (ignoring cycles_top)\nactual: {}\nexpected: {}", actual_norm, golden);
+    assert_eq!(
+        actual_norm, golden,
+        "summary_json should match golden (ignoring cycles_top)\nactual: {}\nexpected: {}",
+        actual_norm, golden
+    );
 }

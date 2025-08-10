@@ -9,7 +9,8 @@ fn stdio_export_times_out() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn() {
+        .spawn()
+    {
         Ok(c) => c,
         Err(_) => {
             eprintln!("archlens-mcp not built; skipping stdio timeout e2e");
@@ -30,7 +31,11 @@ fn stdio_export_times_out() {
     let _ = child.stdout.take().unwrap().read_to_string(&mut out);
 
     assert!(out.contains("\"error\":"), "should return error");
-    assert!(out.contains("timeout"), "error message should mention timeout. Got: {}", out);
+    assert!(
+        out.contains("timeout"),
+        "error message should mention timeout. Got: {}",
+        out
+    );
 
     let _ = child.kill();
 }

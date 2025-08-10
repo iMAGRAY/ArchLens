@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::types::Result;
+use crate::types::*;
 
 /// Complexity validator
 #[derive(Debug)]
@@ -9,12 +9,14 @@ pub struct ComplexityValidator {
 
 impl ComplexityValidator {
     pub fn new() -> Self {
-        Self {
-            max_threshold: 15,
-        }
+        Self { max_threshold: 15 }
     }
-    
-    pub fn validate(&self, graph: &CapsuleGraph, warnings: &mut Vec<AnalysisWarning>) -> Result<()> {
+
+    pub fn validate(
+        &self,
+        graph: &CapsuleGraph,
+        warnings: &mut Vec<AnalysisWarning>,
+    ) -> Result<()> {
         // System complexity check
         if graph.metrics.complexity_average > self.max_threshold as f32 {
             warnings.push(AnalysisWarning {
@@ -28,7 +30,7 @@ impl ComplexityValidator {
                 suggestion: Some("Extract common functionality into separate modules".to_string()),
             });
         }
-        
+
         // Individual capsule complexity check
         for capsule in graph.capsules.values() {
             if capsule.complexity > self.max_threshold {
@@ -44,7 +46,7 @@ impl ComplexityValidator {
                 });
             }
         }
-        
+
         Ok(())
     }
-} 
+}

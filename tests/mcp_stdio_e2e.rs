@@ -13,7 +13,9 @@ fn stdio_tools_list_and_structure() {
             return;
         }
     };
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn().expect("spawn");
 
     let mut stdin = child.stdin.take().unwrap();
@@ -32,6 +34,13 @@ fn stdio_tools_list_and_structure() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Minimal assertions
-    assert!(stdout.contains("\"tools\":"), "tools/list response missing tools");
-    assert!(stdout.contains("STRUCTURE"), "structure.get should return STRUCTURE header, got: {}", stdout);
+    assert!(
+        stdout.contains("\"tools\":"),
+        "tools/list response missing tools"
+    );
+    assert!(
+        stdout.contains("STRUCTURE"),
+        "structure.get should return STRUCTURE header, got: {}",
+        stdout
+    );
 }

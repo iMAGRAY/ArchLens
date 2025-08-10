@@ -2,7 +2,7 @@
 mod tests {
     use crate::types::*;
     use std::path::PathBuf;
-    
+
     #[test]
     fn test_basic_types() {
         // Test basic types creation
@@ -29,22 +29,19 @@ mod tests {
             summary: Some("Test summary".to_string()),
             created_at: Some("2024-01-01T00:00:00Z".to_string()),
         };
-        
+
         // Should not panic
         assert!(true);
     }
-    
+
     #[test]
     fn test_export_formats() {
         // Test that export formats are recognized
-        let formats = vec![
-            ExportFormat::JSON,
-            ExportFormat::YAML,
-        ];
-        
+        let formats = vec![ExportFormat::JSON, ExportFormat::YAML];
+
         assert_eq!(formats.len(), 2);
     }
-    
+
     #[test]
     fn test_priority_ordering() {
         // Test priority ordering (Critical=0, High=1, Medium=2, Low=3)
@@ -52,7 +49,7 @@ mod tests {
         assert!((Priority::High as u8) < (Priority::Medium as u8));
         assert!((Priority::Medium as u8) < (Priority::Low as u8));
     }
-    
+
     #[test]
     fn test_capsule_types() {
         // Test capsule types
@@ -66,7 +63,7 @@ mod tests {
             CapsuleType::Constant,
             CapsuleType::Variable,
         ];
-        
+
         assert_eq!(types.len(), 8);
     }
-} 
+}

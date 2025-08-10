@@ -7,7 +7,8 @@ fn http_tools_list_and_call() {
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn() {
+        .spawn()
+    {
         Ok(c) => c,
         Err(_) => {
             eprintln!("archlens-mcp not built; skipping http tools e2e");
@@ -26,7 +27,9 @@ fn http_tools_list_and_call() {
         .json(&serde_json::json!({}))
         .send();
     assert!(r.is_ok(), "/tools/list should respond");
-    if let Ok(resp) = r { assert!(resp.status().is_success()); }
+    if let Ok(resp) = r {
+        assert!(resp.status().is_success());
+    }
 
     // tools/call export.ai_summary_json
     let payload = serde_json::json!({

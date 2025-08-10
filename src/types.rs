@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
+use uuid::Uuid;
 
 /// Основные типы файлов для анализа
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -63,8 +63,8 @@ pub struct FileMetadata {
     pub size: u64,
     pub lines_count: usize,
     pub last_modified: DateTime<Utc>,
-    pub layer: Option<String>,      // архитектурный слой (domain, infrastructure, etc.)
-    pub slogan: Option<String>,     // краткое описание назначения
+    pub layer: Option<String>, // архитектурный слой (domain, infrastructure, etc.)
+    pub slogan: Option<String>, // краткое описание назначения
     pub status: CapsuleStatus,
     pub dependencies: Vec<PathBuf>,
     pub exports: Vec<String>,
@@ -103,21 +103,21 @@ pub struct CapsuleRelation {
     pub from_id: Uuid,
     pub to_id: Uuid,
     pub relation_type: RelationType,
-    pub strength: f32,             // сила связи 0.0-1.0
+    pub strength: f32, // сила связи 0.0-1.0
     pub description: Option<String>,
 }
 
 /// Типы связей между капсулами
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RelationType {
-    Depends,       // зависимость
-    Uses,          // использование
-    Implements,    // реализация
-    Extends,       // наследование
-    Aggregates,    // агрегация
-    Composes,      // композиция
-    Calls,         // вызов
-    References,    // ссылка
+    Depends,    // зависимость
+    Uses,       // использование
+    Implements, // реализация
+    Extends,    // наследование
+    Aggregates, // агрегация
+    Composes,   // композиция
+    Calls,      // вызов
+    References, // ссылка
 }
 
 /// Граф капсул
@@ -211,8 +211,8 @@ impl Default for AnalysisConfig {
         AnalysisConfig {
             project_path: crate::get_default_project_path(),
             include_patterns: vec![
-                "**/*.rs".to_string(), 
-                "**/*.ts".to_string(), 
+                "**/*.rs".to_string(),
+                "**/*.ts".to_string(),
                 "**/*.js".to_string(),
                 "**/*.java".to_string(),
                 "**/*.cpp".to_string(),
@@ -224,7 +224,7 @@ impl Default for AnalysisConfig {
                 "**/*.hxx".to_string(),
             ],
             exclude_patterns: vec![
-                "**/target/**".to_string(), 
+                "**/target/**".to_string(),
                 "**/node_modules/**".to_string(),
                 "**/build/**".to_string(),
                 "**/out/**".to_string(),
@@ -240,8 +240,8 @@ impl Default for AnalysisConfig {
             experimental_features: false,
             generate_summaries: true,
             languages: vec![
-                FileType::Rust, 
-                FileType::TypeScript, 
+                FileType::Rust,
+                FileType::TypeScript,
                 FileType::JavaScript,
                 FileType::Java,
                 FileType::Cpp,
@@ -259,7 +259,7 @@ pub enum AnalysisError {
     RegexError(String),
     GenericError(String),
     Parse(String),
-    Io(String),  // Изменяю на String для Clone
+    Io(String), // Изменяю на String для Clone
 }
 
 impl From<regex::Error> for AnalysisError {
@@ -366,4 +366,4 @@ pub enum QualityTrend {
     Degrading,
     Stable,
     Mixed,
-} 
+}

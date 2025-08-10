@@ -1,7 +1,7 @@
+use std::collections::HashMap;
+use std::fs;
 /// Diagram generation module - creates various architectural diagrams
 use std::path::Path;
-use std::fs;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct ModuleDependency {
@@ -27,43 +27,44 @@ pub fn generate_mermaid_diagram(project_path: &str) -> std::result::Result<Strin
     if !Path::new(project_path).exists() {
         return Err("Path does not exist".to_string());
     }
-    
+
     let mut output = String::new();
-    
+
     // Diagram header
     add_diagram_header(&mut output);
-    
+
     // Analyze module dependencies
     let dependencies = analyze_module_dependencies(project_path)?;
-    
+
     // Generate nodes
     let nodes = collect_nodes(&dependencies);
     add_node_definitions(&mut output, &nodes);
-    
+
     // Add connections
     add_connections(&mut output, &dependencies);
-    
+
     // Add subgraphs for grouping
     add_subgraphs(&mut output, &nodes);
-    
+
     Ok(output)
 }
 
 /// Analyzes module dependencies in the project
-pub fn analyze_module_dependencies(project_path: &str) -> std::result::Result<Vec<ModuleDependency>, String> {
+pub fn analyze_module_dependencies(
+    project_path: &str,
+) -> std::result::Result<Vec<ModuleDependency>, String> {
     let mut dependencies = Vec::new();
-    
+
     scan_for_dependencies(Path::new(project_path), &mut dependencies, "root")?;
-    
+
     // Remove duplicates
     dependencies.sort_by(|a, b| {
-        a.from_module.cmp(&b.from_module)
+        a.from_module
+            .cmp(&b.from_module)
             .then_with(|| a.to_module.cmp(&b.to_module))
     });
-    dependencies.dedup_by(|a, b| {
-        a.from_module == b.from_module && a.to_module == b.to_module
-    });
-    
+    dependencies.dedup_by(|a, b| a.from_module == b.from_module && a.to_module == b.to_module);
+
     Ok(dependencies)
 }
 
@@ -87,7 +88,7 @@ fn collect_nodes(dependencies: &[ModuleDependency]) -> HashMap<String, String> {
     for dep in dependencies {
         let from_sanitized = sanitize_node_name(&dep.from_module);
         let to_sanitized = sanitize_node_name(&dep.to_module);
-        
+
         nodes.insert(from_sanitized.clone(), dep.from_module.clone());
         nodes.insert(to_sanitized.clone(), dep.to_module.clone());
     }
@@ -98,7 +99,7 @@ fn add_node_definitions(output: &mut String, nodes: &HashMap<String, String>) {
     for (node_id, node_name) in nodes {
         let node_type = classify_node_type(node_name);
         output.push_str(&format!("    {}[\"{}\"]\n", node_id, node_name));
-        
+
         match node_type {
             NodeType::Core => output.push_str(&format!("    class {} core\n", node_id)),
             NodeType::Service => output.push_str(&format!("    class {} service\n", node_id)),
@@ -113,15 +114,18 @@ fn add_connections(output: &mut String, dependencies: &[ModuleDependency]) {
     for dep in dependencies {
         let from_sanitized = sanitize_node_name(&dep.from_module);
         let to_sanitized = sanitize_node_name(&dep.to_module);
-        
+
         let arrow_type = match dep.dependency_type.as_str() {
             "import" => "-->",
             "use" => "-.->",
             "mod" => "==>",
             _ => "-->",
         };
-        
-        output.push_str(&format!("    {} {} {}\n", from_sanitized, arrow_type, to_sanitized));
+
+        output.push_str(&format!(
+            "    {} {} {}\n",
+            from_sanitized, arrow_type, to_sanitized
+        ));
     }
 }
 
@@ -130,7 +134,7 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
     let mut service_nodes = Vec::new();
     let mut utility_nodes = Vec::new();
     let mut config_nodes = Vec::new();
-    
+
     for (node_id, node_name) in nodes {
         match classify_node_type(node_name) {
             NodeType::Core => core_nodes.push(node_id),
@@ -139,9 +143,9 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
             NodeType::Config => config_nodes.push(node_id),
         }
     }
-    
+
     output.push_str("\n    %% Module grouping\n");
-    
+
     if !core_nodes.is_empty() {
         output.push_str("    subgraph Core[\"🔧 Core Modules\"]\n");
         for node_id in core_nodes {
@@ -149,7 +153,7 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
         }
         output.push_str("    end\n");
     }
-    
+
     if !service_nodes.is_empty() {
         output.push_str("    subgraph Services[\"🚀 Services\"]\n");
         for node_id in service_nodes {
@@ -157,7 +161,7 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
         }
         output.push_str("    end\n");
     }
-    
+
     if !utility_nodes.is_empty() {
         output.push_str("    subgraph Utils[\"🛠️ Utilities\"]\n");
         for node_id in utility_nodes {
@@ -165,7 +169,7 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
         }
         output.push_str("    end\n");
     }
-    
+
     if !config_nodes.is_empty() {
         output.push_str("    subgraph Config[\"⚙️ Configuration\"]\n");
         for node_id in config_nodes {
@@ -179,18 +183,21 @@ fn add_subgraphs(output: &mut String, nodes: &HashMap<String, String>) {
 // DEPENDENCY ANALYSIS
 // ============================================================================
 
-fn scan_for_dependencies(dir: &Path, dependencies: &mut Vec<ModuleDependency>, current_module: &str) -> std::result::Result<(), String> {
+fn scan_for_dependencies(
+    dir: &Path,
+    dependencies: &mut Vec<ModuleDependency>,
+    current_module: &str,
+) -> std::result::Result<(), String> {
     if !dir.is_dir() {
         return Ok(());
     }
-    
-    let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
-    
+
+    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to process entry: {}", e))?;
         let path = entry.path();
-        
+
         if path.is_dir() {
             if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
                 if !should_skip_directory(dir_name) {
@@ -202,14 +209,16 @@ fn scan_for_dependencies(dir: &Path, dependencies: &mut Vec<ModuleDependency>, c
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 match ext {
                     "rs" => analyze_rust_file(&path, dependencies, current_module)?,
-                    "js" | "ts" | "jsx" | "tsx" => analyze_js_file(&path, dependencies, current_module)?,
+                    "js" | "ts" | "jsx" | "tsx" => {
+                        analyze_js_file(&path, dependencies, current_module)?
+                    }
                     "py" => analyze_python_file(&path, dependencies, current_module)?,
                     _ => {}
                 }
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -217,19 +226,24 @@ fn scan_for_dependencies(dir: &Path, dependencies: &mut Vec<ModuleDependency>, c
 // FILE ANALYZERS
 // ============================================================================
 
-fn analyze_rust_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>, current_module: &str) -> std::result::Result<(), String> {
-    let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    
-    let file_name = file_path.file_stem()
+fn analyze_rust_file(
+    file_path: &Path,
+    dependencies: &mut Vec<ModuleDependency>,
+    current_module: &str,
+) -> std::result::Result<(), String> {
+    let content =
+        fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let file_name = file_path
+        .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    
+
     let module_name = format!("{}/{}", current_module, file_name);
-    
+
     for line in content.lines() {
         let line = line.trim();
-        
+
         if let Some(import) = extract_rust_import(line) {
             dependencies.push(ModuleDependency {
                 from_module: module_name.clone(),
@@ -237,7 +251,7 @@ fn analyze_rust_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>,
                 dependency_type: "use".to_string(),
             });
         }
-        
+
         if line.starts_with("mod ") {
             if let Some(mod_name) = line.split_whitespace().nth(1) {
                 let mod_name = mod_name.trim_end_matches(';');
@@ -249,23 +263,28 @@ fn analyze_rust_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>,
             }
         }
     }
-    
+
     Ok(())
 }
 
-fn analyze_js_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>, current_module: &str) -> std::result::Result<(), String> {
-    let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    
-    let file_name = file_path.file_stem()
+fn analyze_js_file(
+    file_path: &Path,
+    dependencies: &mut Vec<ModuleDependency>,
+    current_module: &str,
+) -> std::result::Result<(), String> {
+    let content =
+        fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let file_name = file_path
+        .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    
+
     let module_name = format!("{}/{}", current_module, file_name);
-    
+
     for line in content.lines() {
         let line = line.trim();
-        
+
         if let Some(import) = extract_js_import(line) {
             dependencies.push(ModuleDependency {
                 from_module: module_name.clone(),
@@ -274,23 +293,28 @@ fn analyze_js_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>, c
             });
         }
     }
-    
+
     Ok(())
 }
 
-fn analyze_python_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency>, current_module: &str) -> std::result::Result<(), String> {
-    let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    
-    let file_name = file_path.file_stem()
+fn analyze_python_file(
+    file_path: &Path,
+    dependencies: &mut Vec<ModuleDependency>,
+    current_module: &str,
+) -> std::result::Result<(), String> {
+    let content =
+        fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let file_name = file_path
+        .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    
+
     let module_name = format!("{}/{}", current_module, file_name);
-    
+
     for line in content.lines() {
         let line = line.trim();
-        
+
         if let Some(import) = extract_python_import(line) {
             dependencies.push(ModuleDependency {
                 from_module: module_name.clone(),
@@ -299,7 +323,7 @@ fn analyze_python_file(file_path: &Path, dependencies: &mut Vec<ModuleDependency
             });
         }
     }
-    
+
     Ok(())
 }
 
@@ -373,12 +397,21 @@ fn sanitize_node_name(name: &str) -> String {
 
 fn classify_node_type(node_name: &str) -> NodeType {
     let name_lower = node_name.to_lowercase();
-    
-    if name_lower.contains("service") || name_lower.contains("api") || name_lower.contains("handler") {
+
+    if name_lower.contains("service")
+        || name_lower.contains("api")
+        || name_lower.contains("handler")
+    {
         NodeType::Service
-    } else if name_lower.contains("util") || name_lower.contains("helper") || name_lower.contains("tool") {
+    } else if name_lower.contains("util")
+        || name_lower.contains("helper")
+        || name_lower.contains("tool")
+    {
         NodeType::Utility
-    } else if name_lower.contains("config") || name_lower.contains("setting") || name_lower.contains("env") {
+    } else if name_lower.contains("config")
+        || name_lower.contains("setting")
+        || name_lower.contains("env")
+    {
         NodeType::Config
     } else {
         NodeType::Core
@@ -386,5 +419,8 @@ fn classify_node_type(node_name: &str) -> NodeType {
 }
 
 fn should_skip_directory(dir_name: &str) -> bool {
-    matches!(dir_name, "node_modules" | "target" | ".git" | ".idea" | ".vscode" | "dist" | "build")
-} 
+    matches!(
+        dir_name,
+        "node_modules" | "target" | ".git" | ".idea" | ".vscode" | "dist" | "build"
+    )
+}

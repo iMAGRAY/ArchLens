@@ -1,14 +1,14 @@
 // Обеспечиваем работу как CLI, так и GUI
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use archlens::commands::*;
 use archlens::cli;
+use archlens::commands::*;
 use std::env;
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     // Если есть аргументы командной строки, запускаем CLI режим
     if args.len() > 1 && args[1] != "--tauri" {
         match cli::run().await {
@@ -19,7 +19,7 @@ async fn main() {
             }
         }
     }
-    
+
     // Иначе запускаем GUI режим (только когда собрано с фичей `gui`)
     #[cfg(feature = "gui")]
     {

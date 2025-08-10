@@ -1,12 +1,11 @@
+use crate::types::Result;
 use crate::types::*;
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::types::Result;
 
 use super::{
-    ComplexityValidator, CouplingValidator, CohesionValidator, 
-    PatternDetector, SolidAnalyzer, CycleValidator, LayerValidator, 
-    NamingValidator, GraphOptimizer
+    CohesionValidator, ComplexityValidator, CouplingValidator, CycleValidator, GraphOptimizer,
+    LayerValidator, NamingValidator, PatternDetector, SolidAnalyzer,
 };
 
 /// Main validator and optimizer for capsule graphs
@@ -16,7 +15,7 @@ pub struct ValidatorOptimizer {
     pub coupling_threshold: f32,
     pub cohesion_threshold: f32,
     pub god_object_threshold: u32,
-    
+
     // Validators
     complexity_validator: ComplexityValidator,
     coupling_validator: CouplingValidator,
@@ -35,7 +34,7 @@ impl ValidatorOptimizer {
             coupling_threshold: 0.7,
             cohesion_threshold: 0.3,
             god_object_threshold: 20,
-            
+
             complexity_validator: ComplexityValidator::new(),
             coupling_validator: CouplingValidator::new(),
             cohesion_validator: CohesionValidator::new(),
@@ -46,32 +45,43 @@ impl ValidatorOptimizer {
             optimizer: GraphOptimizer::new(),
         }
     }
-    
+
     /// Main validation and optimization entry point
     pub fn validate_and_optimize(&self, graph: &CapsuleGraph) -> Result<CapsuleGraph> {
         let mut optimized_graph = graph.clone();
         let mut warnings = Vec::new();
-        
+
         // Run all validations
-        self.complexity_validator.validate(&optimized_graph, &mut warnings)?;
-        self.coupling_validator.validate(&optimized_graph, &mut warnings)?;
-        self.cohesion_validator.validate(&optimized_graph, &mut warnings)?;
-        self.cycle_validator.validate(&optimized_graph, &mut warnings)?;
-        self.layer_validator.validate(&optimized_graph, &mut warnings)?;
-        self.naming_validator.validate(&optimized_graph, &mut warnings)?;
-        self.pattern_detector.validate(&optimized_graph, &mut warnings)?;
-        
+        self.complexity_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.coupling_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.cohesion_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.cycle_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.layer_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.naming_validator
+            .validate(&optimized_graph, &mut warnings)?;
+        self.pattern_detector
+            .validate(&optimized_graph, &mut warnings)?;
+
         // Optimize the graph
         self.optimizer.optimize(&mut optimized_graph)?;
-        
+
         // Distribute warnings to capsules
         self.distribute_warnings_to_capsules(&mut optimized_graph, warnings)?;
-        
+
         Ok(optimized_graph)
     }
-    
+
     /// Distributes warnings to their corresponding capsules
-    fn distribute_warnings_to_capsules(&self, graph: &mut CapsuleGraph, warnings: Vec<AnalysisWarning>) -> Result<()> {
+    fn distribute_warnings_to_capsules(
+        &self,
+        graph: &mut CapsuleGraph,
+        warnings: Vec<AnalysisWarning>,
+    ) -> Result<()> {
         for warning in warnings {
             if let Some(capsule_id) = warning.capsule_id {
                 if let Some(capsule) = graph.capsules.get_mut(&capsule_id) {
@@ -87,4 +97,4 @@ impl Default for ValidatorOptimizer {
     fn default() -> Self {
         Self::new()
     }
-} 
+}

@@ -9,7 +9,8 @@ fn http_export_times_out() {
         .env("ARCHLENS_TEST_DELAY_MS", "500")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn() {
+        .spawn()
+    {
         Ok(c) => c,
         Err(_) => {
             eprintln!("archlens-mcp not built; skipping http timeout e2e");
