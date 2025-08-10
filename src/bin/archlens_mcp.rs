@@ -488,7 +488,7 @@ fn heavy_timeout_ms(tool: &str) -> u64 {
         "export.ai_summary_json" => env_u64("ARCHLENS_TIMEOUT_SUMMARY_MS", 300_000),
         // Respect per-tool overrides if provided, otherwise fall back to global
         "export.ai_compact" => env_u64("ARCHLENS_TIMEOUT_COMPACT_MS", env_timeout_ms()),
-        "graph.build" => env_u64("ARCHLENS_TIMEOUT_GRAPH_MS", env_timeout_ms()),
+        "graph.build" => env_u64("ARCHLENS_TIMEOUT_GRAPH_MS", 300_000),
         "analyze.project" => env_u64("ARCHLENS_TIMEOUT_ANALYZE_MS", env_timeout_ms()),
         "structure.get" => env_u64("ARCHLENS_TIMEOUT_STRUCTURE_MS", env_timeout_ms()),
         "ai.recommend" => env_u64("ARCHLENS_TIMEOUT_RECO_MS", env_timeout_ms()),
@@ -1489,6 +1489,29 @@ fn handle_call(
                     let args: DiagramArgs =
                         serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
+                    // Cache key includes diagram type and detail level
+                    let detail = level(&args.detail_level).to_string();
+                    let diag_type = args.diagram_type.clone().unwrap_or_default();
+                    let key = export_cache_key(
+                        &path.to_string_lossy(),
+                        "diagram",
+                        &Some(vec![
+                            format!("diagram_type={}", diag_type),
+                            format!("detail={}", detail),
+                        ]),
+                        None,
+                        args.max_output_chars,
+                    );
+                    // Try cache first
+                    if let Some((etag_cached, output_cached)) = cache_get(&key, env_cache_ttl_ms()) {
+                        if args.etag.as_deref() == Some(&etag_cached) {
+                            return Ok(serde_json::json!({"status":"not_modified","etag": etag_cached}));
+                        } else {
+                            return Ok(serde_json::json!({"status":"ok","etag": etag_cached, "content":[{"type":"text","text": output_cached}]}));
+                        }
+                    }
+
+                    // Build mermaid
                     let mmd = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
                         .or_else(|_| {
                         diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref())
@@ -1496,10 +1519,11 @@ fn handle_call(
                     let txt = format_diagram_text(
                         mmd,
                         path.to_string_lossy().as_ref(),
-                        level(&args.detail_level),
+                        &detail,
                     );
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
+                    cache_put(&key, &etag, &txt);
                     Ok(
                         serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}),
                     )
