@@ -361,6 +361,17 @@ impl Exporter {
         compact.push_str("# AI Compact Analysis\n\n");
         compact.push_str(&format!("## Summary\n- Components: {}\n- Relations: {}\n- Complexity(avg): {:.2}\n\n", graph.metrics.total_capsules, graph.metrics.total_relations, graph.metrics.complexity_average));
         
+        // Краткие проблемы (эвристики)
+        compact.push_str("## Problems (Heuristic)\n");
+        if graph.metrics.coupling_index > 0.7 { compact.push_str("- High coupling\n"); }
+        if graph.metrics.cohesion_index < 0.3 { compact.push_str("- Low cohesion\n"); }
+        if graph.metrics.cyclomatic_complexity > (graph.metrics.total_relations as u32).saturating_add(10) { compact.push_str("- High graph cyclomatic complexity\n"); }
+        // Подсчёт предупреждений
+        let total_warnings: usize = graph.capsules.values().map(|c| c.warnings.len()).sum();
+        if total_warnings > 0 { compact.push_str(&format!("- Warnings: {}\n", total_warnings)); }
+        if compact.ends_with("Heuristic)\n") { compact.push_str("- None\n"); }
+        compact.push_str("\n");
+        
         // Топ-капсулы по сложности
         let mut top: Vec<_> = graph.capsules.values().collect();
         top.sort_by_key(|c| std::cmp::Reverse(c.complexity));

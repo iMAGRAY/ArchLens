@@ -559,15 +559,14 @@ impl ParserAST {
 #[cfg(feature = "tree_sitter")]
 impl ParserAST {
     fn ts_collect_rust_nodes(&self, content: &str, file_path: &Path, node: tree_sitter::Node, out: &mut Vec<ASTElement>) -> Result<()> {
-        let mut cursor = node.walk();
-        // DFS
-        let mut stack: Vec<tree_sitter::Node> = vec![node];
-        while let Some(n) = stack.pop() {
+        // DFS with ancestor flag: inside impl/trait
+        let mut stack: Vec<(tree_sitter::Node, bool)> = vec![(node, false)];
+        while let Some((n, in_impl_trait)) = stack.pop() {
             let kind = n.kind();
+            let now_in_impl_trait = in_impl_trait || kind == "impl_item" || kind == "trait_item";
             match kind {
-                // Items of interest in rust grammar
                 "function_item" => {
-                    if let Some(el) = self.ts_build_fn_element(content, &n, file_path)? { out.push(el); }
+                    if let Some(el) = self.ts_build_fn_element(content, &n, file_path, now_in_impl_trait)? { out.push(el); }
                 },
                 "struct_item" => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Struct)? { out.push(el); } },
                 "enum_item"   => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Enum)? { out.push(el); } },
@@ -576,9 +575,9 @@ impl ParserAST {
                 "use_declaration" => { if let Some(el) = self.ts_build_import_element(content, &n, file_path)? { out.push(el); } },
                 _ => {}
             }
-            // push children
-            let mut c = n.walk();
-            for i in 0..n.child_count() { if let Some(ch) = n.child(i) { stack.push(ch); } }
+            for i in 0..n.child_count() {
+                if let Some(ch) = n.child(i) { stack.push((ch, now_in_impl_trait)); }
+            }
         }
         Ok(())
     }
@@ -597,17 +596,15 @@ impl ParserAST {
     }
 
     fn ts_identifier<'a>(&self, node: &'a tree_sitter::Node) -> Option<tree_sitter::Node<'a>> {
-        // rust grammar uses identifier for names of items
         self.ts_find_child(node, "identifier").or_else(|| self.ts_find_child(node, "type_identifier"))
     }
 
     fn ts_visibility(&self, node: &tree_sitter::Node, content: &str) -> String {
-        // presence of "pub" before the name
         let text = self.ts_text(content, node);
         if text.trim_start().starts_with("pub") { "public".to_string() } else { "private".to_string() }
     }
 
-    fn ts_build_named_element(&self, content: &str, node: &tree_sitter::Node, file_path: &Path, etype: ASTElementType) -> Result<Option<ASTElement>> {
+    fn ts_build_named_element(&self, content: &str, node: &tree_sitter::Node, _file_path: &Path, etype: ASTElementType) -> Result<Option<ASTElement>> {
         let id_node = match self.ts_identifier(node) { Some(n) => n, None => return Ok(None) };
         let name = self.ts_text(content, &id_node).trim().to_string();
         let text = self.ts_text(content, node).to_string();
@@ -634,7 +631,7 @@ impl ParserAST {
         Ok(Some(element))
     }
 
-    fn ts_build_fn_element(&self, content: &str, node: &tree_sitter::Node, file_path: &Path) -> Result<Option<ASTElement>> {
+    fn ts_build_fn_element(&self, content: &str, node: &tree_sitter::Node, _file_path: &Path, is_method: bool) -> Result<Option<ASTElement>> {
         let id_node = match self.ts_identifier(node) { Some(n) => n, None => return Ok(None) };
         let name = self.ts_text(content, &id_node).trim().to_string();
         let text = self.ts_text(content, node).to_string();
@@ -651,7 +648,7 @@ impl ParserAST {
         let mut element = ASTElement {
             id: uuid::Uuid::new_v4(),
             name,
-            element_type: ASTElementType::Function,
+            element_type: if is_method { ASTElementType::Method } else { ASTElementType::Function },
             content: text.clone(),
             start_line: start.row + 1,
             end_line: end.row + 1,
@@ -668,6 +665,32 @@ impl ParserAST {
         // complexity from regex indicators
         let patterns = &self.rust_patterns;
         element.complexity = self.calculate_complexity(&element.content, patterns);
+        Ok(Some(element))
+    }
+
+    fn ts_build_import_element(&self, content: &str, node: &tree_sitter::Node, _file_path: &Path) -> Result<Option<ASTElement>> {
+        let text = self.ts_text(content, node).to_string();
+        // Try to extract simple path after 'use'
+        let name = text.trim().trim_start_matches("use").trim().trim_end_matches(';').split_whitespace().next().unwrap_or("").to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Import,
+            content: text,
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility: "public".to_string(),
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
         Ok(Some(element))
     }
 }
