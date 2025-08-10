@@ -17,18 +17,23 @@ pub struct AnalyzeArgs {
     pub project_path: String,
     pub deep: Option<bool>,
     pub detail_level: Option<String>, // summary|standard|full
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExportArgs {
     pub project_path: String,
     pub detail_level: Option<String>, // summary|standard|full
+    pub max_output_chars: Option<usize>,
+    pub sections: Option<Vec<String>>, // e.g., ["summary","problems_validated","cycles"] or exact headers
+    pub top_n: Option<usize>,          // limit list items in sections
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructureArgs {
     pub project_path: String,
     pub detail_level: Option<String>, // summary|standard|full
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -36,6 +41,7 @@ pub struct DiagramArgs {
     pub project_path: String,
     pub diagram_type: Option<String>,
     pub detail_level: Option<String>, // summary|standard|full
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +117,12 @@ fn clamp_text(s: &str, max_chars: usize) -> String {
     out
 }
 
+fn clamp_text_with_limit(s: &str, req_limit: Option<usize>) -> String {
+    let hard = MAX_OUTPUT_CHARS;
+    let eff = req_limit.map(|v| v.min(hard)).unwrap_or(hard);
+    clamp_text(s, eff)
+}
+
 fn strip_code_blocks(md: &str) -> String {
     let re = Regex::new(r"(?s)```.*?```").ok();
     let mut out = md.to_string();
@@ -118,6 +130,66 @@ fn strip_code_blocks(md: &str) -> String {
     // compress blank lines
     let re2 = Regex::new(r"\n{3,}").ok();
     if let Some(re2) = re2 { out = re2.replace_all(&out, "\n\n").to_string(); }
+    out
+}
+
+fn canonical_section_key(name: &str) -> &str {
+    let n = name.trim().to_lowercase();
+    match n.as_str() {
+        "summary" => "## summary",
+        "problems" | "problems_validated" => "## problems (validated)",
+        "problems_heuristic" => "## problems (heuristic)",
+        "cycles" | "cycles (top)" => "## cycles (top)",
+        "coupling" | "top coupling" => "## top coupling",
+        "complexity" | "top complexity components" => "## top complexity components",
+        "layers" => "## layers",
+        other => other,
+    }
+}
+
+fn filter_markdown_sections(md: &str, sections: &Option<Vec<String>>) -> String {
+    if sections.is_none() { return md.to_string(); }
+    let wanted: Vec<String> = sections.as_ref().unwrap().iter().map(|s| canonical_section_key(s).to_string()).collect();
+    let mut out = String::new();
+    let mut include = false;
+    for line in md.lines() {
+        if line.starts_with("# ") {
+            // always keep top title
+            if out.is_empty() { out.push_str(line); out.push('\n'); }
+            continue;
+        }
+        if line.starts_with("## ") {
+            let key = canonical_section_key(line).to_string();
+            include = wanted.iter().any(|w| key.starts_with(&w));
+            if include { out.push_str(line); out.push('\n'); }
+            continue;
+        }
+        if include { out.push_str(line); out.push('\n'); }
+    }
+    if out.trim().is_empty() { md.to_string() } else { out }
+}
+
+fn trim_bullets_in_sections(md: &str, top_n: Option<usize>) -> String {
+    if top_n.is_none() { return md.to_string(); }
+    let limit = top_n.unwrap_or(0);
+    if limit == 0 { return md.to_string(); }
+    let mut out = String::new();
+    let mut current_is_bullet_section = false;
+    let mut count = 0usize;
+    for line in md.lines() {
+        if line.starts_with("## ") {
+            current_is_bullet_section = line.contains("Top Coupling") || line.contains("Top Complexity Components") || line.contains("Cycles (Top)");
+            count = 0;
+            out.push_str(line); out.push('\n');
+            continue;
+        }
+        if current_is_bullet_section && line.trim_start().starts_with("-") {
+            if count < limit { out.push_str(line); out.push('\n'); }
+            count += 1;
+            continue;
+        }
+        out.push_str(line); out.push('\n');
+    }
     out
 }
 
@@ -178,6 +250,15 @@ fn format_export_markdown(md: String, detail_level: &str) -> String {
     }
 }
 
+fn format_export_markdown_with_controls(md: String, detail_level: &str, sections: &Option<Vec<String>>, top_n: Option<usize>, max_chars: Option<usize>) -> String {
+    // filter first to reduce size
+    let mut content = filter_markdown_sections(&md, sections);
+    content = trim_bullets_in_sections(&content, top_n);
+    // then apply standard formatting
+    let formatted = format_export_markdown(content, detail_level);
+    clamp_text_with_limit(&formatted, max_chars)
+}
+
 fn format_diagram_text(mmd: String, project_path: &str, detail_level: &str) -> String {
     let mut limit = 120_000usize;
     if detail_level == "summary" { limit = 15_000; } else if detail_level == "standard" { limit = 40_000; }
@@ -206,7 +287,7 @@ async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Va
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(md)) => {
-                let txt = format_export_markdown(md, &lv);
+                let txt = format_export_markdown_with_controls(md, &lv, &args.sections, args.top_n, args.max_output_chars);
                 Ok(Json(serde_json::json!({"status":"ok","output": txt})))
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -231,6 +312,7 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
         Ok(joined) => match joined {
             Ok(Ok(structure)) => {
                 let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
+                let text = clamp_text_with_limit(&text, args.max_output_chars);
                 Ok(Json(serde_json::json!({"status":"ok","text": text})))
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -252,7 +334,6 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let p = path.clone();
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
-        // Prefer full graph-based mermaid; fallback to simple import-based
         cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
             .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
     });
@@ -260,6 +341,7 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
         Ok(joined) => match joined {
             Ok(Ok(mmd)) => {
                 let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
+                let text = clamp_text_with_limit(&text, args.max_output_chars);
                 Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
             },
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
@@ -403,7 +485,7 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let args: ExportArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
                     let out = export::generate_ai_compact(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
-                    let txt = format_export_markdown(out, level(&args.detail_level));
+                    let txt = format_export_markdown_with_controls(out, level(&args.detail_level), &args.sections, args.top_n, args.max_output_chars);
                     Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "structure.get" => {
@@ -411,15 +493,16 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let path = ensure_absolute_path(args.project_path);
                     let st = stats::get_project_structure(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                     let txt = format_structure_result(path.to_string_lossy().as_ref(), &st, level(&args.detail_level));
+                    let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "graph.build" => {
                     let args: DiagramArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
-                    // Prefer graph-based; fallback to simple
                     let mmd = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
                         .or_else(|_| diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()))?;
                     let txt = format_diagram_text(mmd, path.to_string_lossy().as_ref(), level(&args.detail_level));
+                    let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "analyze.project" => {
@@ -430,11 +513,13 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                             .map_err(|e| e.to_string())?;
                         let lv = level(&args.detail_level);
                         let txt = clamp_text(&res, if lv=="full" { MAX_OUTPUT_CHARS } else if lv=="standard" { SUMMARY_LIMIT_CHARS * 2 } else { SUMMARY_LIMIT_CHARS });
+                        let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                         Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                     } else {
                         let s = stats::get_project_stats(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                         let lv = level(&args.detail_level);
                         let txt = format_analysis_result(path.to_string_lossy().as_ref(), &s, lv);
+                        let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                         Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                     }
                 }
