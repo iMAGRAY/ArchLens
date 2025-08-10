@@ -95,11 +95,13 @@ cargo build --release
 
 #### 🤖 AI-Ready Export
 ```bash
-# Export comprehensive analysis for AI
+# Export comprehensive analysis for AI (summary detail level by default)
 ./archlens export . ai_compact
 
 # Save to file
 ./archlens export . ai_compact --output analysis.md
+
+# Request full verbosity via MCP (detail_level=full) to avoid token clipping
 ```
 
 #### 📈 Architecture Diagram
@@ -119,8 +121,9 @@ cargo build --release
 
 ArchLens includes a powerful MCP server for seamless AI assistant integration:
 
-- Now accepts absolute and relative paths ('.', './src') — they are resolved to absolute safely.
-- Responses are compact by default to minimize tokens while preserving signal.
+- Accepts absolute and relative paths ('.', './src') — resolved to absolute safely.
+- `detail_level`: summary (default) | standard | full. Compact by default to minimize tokens without losing signal.
+- CLI deep pipeline: `./archlens analyze . --deep` (scan → AST → capsules → graph → validators).
 
 #### 🛠️ Setup with Claude Desktop
 
@@ -212,6 +215,14 @@ OPTIONS:
     --include-metrics       Include quality metrics
     --output <FILE>         Output file path
 ```
+
+### 🧠 AI Compact Sections
+- Summary: totals and average complexity
+- Problems (Heuristic): graph-level coupling/cohesion/complexity
+- Problems (Validated): validator warnings by category with top components and severity H/M/L
+- Cycles (Top): top cycles by length
+- Top Coupling: hub components by degree
+- Top Complexity Components: top-10 by complexity
 
 ### 🎨 Output Examples
 

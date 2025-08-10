@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// 🏗️ ARCHLENS MCP SERVER v2.0.0 - CRITICAL FIXES APPLIED
-// NO HARDCODED PATHS | NO SIDE EFFECTS | ABSOLUTE PATHS ONLY | UNIFIED LANGUAGE | WINDOWS FIXES
+// 🏗️ ARCHLENS MCP SERVER v1.0.2 - TOKEN-OPTIMIZED OUTPUT, RELATIVE PATHS SUPPORTED
+// NO HARDCODED PATHS | SAFE RELATIVE→ABSOLUTE RESOLUTION | UNIFIED LANGUAGE | WINDOWS FIXES
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
@@ -15,7 +15,7 @@ const iconv = require('iconv-lite');
 const CONFIG = {
   server: {
   name: "archlens-mcp-server",
-    version: "2.0.0"
+    version: "1.0.2"
   },
   binary: {
     name: process.env.ARCHLENS_BINARY || "archlens",
@@ -168,7 +168,7 @@ function getArchLensBinary() {
     `  4. Set ARCHLENS_BINARY=custom_name`);
 }
 
-// 🛡️ ABSOLUTE PATH RESOLUTION (NO RELATIVE PATHS)
+// 🛡️ ABSOLUTE PATH RESOLUTION (RELATIVE SUPPORTED)
 function resolveProjectPath(inputPath) {
   if (!inputPath || typeof inputPath !== 'string') {
     throw new Error('project_path is required and must be a string');
@@ -761,27 +761,6 @@ async function handleExportAICompact(args) {
       throw new Error("project_path is required");
     }
     
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
-    }
-    
     const resolvedPath = resolveProjectPath(project_path);
     const additionalArgs = ['ai_compact'];
     if (output_file) {
@@ -803,27 +782,6 @@ async function handleGetProjectStructure(args) {
   try {
     if (!project_path) {
       throw new Error("project_path is required");
-    }
-    
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -848,27 +806,6 @@ async function handleGenerateDiagram(args) {
   try {
     if (!project_path) {
       throw new Error("project_path is required");
-    }
-    
-    // Early validation for user-friendly error messages
-    if (project_path === '.' || project_path.startsWith('./') || project_path.startsWith('../')) {
-      return {
-        content: [{
-          type: "text",
-          text: `❌ RELATIVE PATH REJECTED
-
-You provided: "${project_path}"
-
-This MCP server requires ABSOLUTE paths only. Examples:
-- ✅ "/home/user/myproject" 
-- ✅ "C:\\Users\\User\\MyProject"
-- ❌ "." (current directory)
-- ❌ "./src" (relative path)
-
-Please provide the complete absolute path to your project directory.`
-        }],
-        isError: true
-      };
     }
     
     const resolvedPath = resolveProjectPath(project_path);
@@ -1094,13 +1031,40 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  logger.info("🏗️ ArchLens MCP Server v2.0.0 started - CRITICAL FIXES APPLIED");
-  logger.info("✅ NO HARDCODED PATHS | NO SIDE EFFECTS | PROPER '.' SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES");
+  logger.info("🏗️ ArchLens MCP Server v1.0.2 started - RELATIVE PATHS SUPPORTED");
+  logger.info("✅ NO HARDCODED PATHS | SAFE '.' SUPPORT | UNIFIED LANGUAGE | WINDOWS FIXES");
   
   process.stdin.resume();
 }
 
-main().catch(error => {
-  logger.error(`Server startup failed: ${error.message}`);
-  process.exit(1);
-}); 
+if (require.main === module) {
+  main().catch(error => {
+    logger.error(`Server startup failed: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  CONFIG,
+  Logger,
+  getArchLensBinary,
+  resolveProjectPath,
+  getWindowsExecutionOptions,
+  checkWindowsAdminRights,
+  tryAutoElevation,
+  createAdminElevationInstructions,
+  executeArchlensCommand,
+  createMCPResponse,
+  getToolDisplayName,
+  getToolAction,
+  ResponseFormatter,
+  formatToolResult,
+  stripCodeBlocks,
+  clampText,
+  handleAnalyzeProject,
+  handleExportAICompact,
+  handleGetProjectStructure,
+  handleGenerateDiagram,
+  createManualStructure,
+  server
+}; 
