@@ -368,6 +368,11 @@ impl Exporter {
         if compact.ends_with("Heuristic)\n") { compact.push_str("- None\n"); }
         compact.push_str("\n");
         
+        // Проблемы по валидаторам (агрегированно)
+        if let Some(validated) = self.build_validated_problems_section(graph) {
+            compact.push_str(&validated);
+        }
+        
         // Циклы (топ-5 по длине)
         if let Some(cycles_section) = self.build_cycles_section(graph) {
             compact.push_str(&cycles_section);
@@ -393,6 +398,43 @@ impl Exporter {
             for (name, count) in layers.into_iter().take(8) { compact.push_str(&format!("- {}: {}\n", name, count)); }
         }
         Ok(compact)
+    }
+
+    fn build_validated_problems_section(&self, graph: &CapsuleGraph) -> Option<String> {
+        use std::collections::HashMap;
+        if graph.capsules.is_empty() { return None; }
+        let mut category_counts: HashMap<String, usize> = HashMap::new();
+        let mut category_components: HashMap<String, HashMap<Uuid, usize>> = HashMap::new();
+        for (id, cap) in &graph.capsules {
+            for w in &cap.warnings {
+                let cat = w.category.clone();
+                *category_counts.entry(cat.clone()).or_insert(0) += 1;
+                let entry = category_components.entry(cat).or_insert_with(HashMap::new);
+                *entry.entry(*id).or_insert(0) += 1;
+            }
+        }
+        if category_counts.is_empty() { return None; }
+        // Сортируем категории по количеству
+        let mut cats: Vec<(String, usize)> = category_counts.into_iter().collect();
+        cats.sort_by_key(|(_, c)| Reverse(*c));
+        let mut out = String::new();
+        out.push_str("## Problems (Validated)\n");
+        for (cat, cnt) in cats.into_iter().take(6) {
+            // Топ-3 компонента для категории
+            let mut comps: Vec<(Uuid, usize)> = category_components.get(&cat).cloned().unwrap_or_default().into_iter().collect();
+            comps.sort_by_key(|(_, n)| Reverse(*n));
+            let mut top_names: Vec<String> = Vec::new();
+            for (cid, _n) in comps.into_iter().take(3) {
+                if let Some(c) = graph.capsules.get(&cid) { top_names.push(c.name.clone()); }
+            }
+            if top_names.is_empty() {
+                out.push_str(&format!("- {}: {}\n", cat, cnt));
+            } else {
+                out.push_str(&format!("- {}: {} (top: {})\n", cat, cnt, top_names.join(", ")));
+            }
+        }
+        out.push_str("\n");
+        Some(out)
     }
 
     fn build_cycles_section(&self, graph: &CapsuleGraph) -> Option<String> {
