@@ -20,9 +20,8 @@ pub async fn handle_command(command: parser::CliCommand) -> std::result::Result<
                 std::process::exit(1);
             }
             if deep {
-                // Используем Tauri-команду полного пайплайна напрямую
-                match crate::commands::analyze_project_advanced(project_path.clone(), None, crate::commands::AppState::default().into()).await {
-                    Ok(json) => { println!("{}", json); },
+                match run_deep_pipeline(&project_path) {
+                    Ok(json) => println!("{}", json),
                     Err(err) => {
                         eprintln!("⚠️ Ошибка deep-анализа: {}. Переход к базовой статистике.", err);
                         match stats::get_project_stats(&project_path) {
@@ -73,10 +72,18 @@ pub async fn handle_command(command: parser::CliCommand) -> std::result::Result<
             let diag_type = match diagram_type { parser::DiagramType::Mermaid => "mermaid", parser::DiagramType::Dot => "dot", parser::DiagramType::Svg => "svg" };
             match diag_type {
                 "mermaid" => {
-                    // Улучшим: если уже есть анализ, можно было бы дернуть Exporter::export_to_mermaid по графу; оставим как есть для безопасности
-                    match diagram::generate_mermaid_diagram(&project_path) {
-                        Ok(content) => { if let Some(out) = output { std::fs::write(&out, &content)?; eprintln!("✅ Mermaid диаграмма сохранена в: {}", out); } else { println!("{}", content); } },
-                        Err(err) => { eprintln!("❌ Ошибка генерации диаграммы: {}", err); std::process::exit(1); }
+                    // Сначала попробуем построить граф и отдать мермайд на его основе
+                    match build_graph_mermaid(&project_path) {
+                        Ok(content) => {
+                            if let Some(out) = output { std::fs::write(&out, &content)?; eprintln!("✅ Mermaid диаграмма (graph) сохранена в: {}", out); } else { println!("{}", content); }
+                        },
+                        Err(_) => {
+                            // Фоллбек на старый генератор по импортам
+                            match diagram::generate_mermaid_diagram(&project_path) {
+                                Ok(content) => { if let Some(out) = output { std::fs::write(&out, &content)?; eprintln!("✅ Mermaid диаграмма сохранена в: {}", out); } else { println!("{}", content); } },
+                                Err(err) => { eprintln!("❌ Ошибка генерации диаграммы: {}", err); std::process::exit(1); }
+                            }
+                        }
                     }
                 },
                 _ => { eprintln!("❌ Неподдерживаемый тип диаграммы: {}", diag_type); eprintln!("Доступные типы: mermaid"); std::process::exit(1); }
@@ -84,6 +91,86 @@ pub async fn handle_command(command: parser::CliCommand) -> std::result::Result<
         }
     }
     Ok(())
+}
+
+fn build_graph_mermaid(project_path: &str) -> std::result::Result<String, String> {
+    use crate::file_scanner::FileScanner;
+    use crate::parser_ast::ParserAST;
+    use crate::capsule_constructor::CapsuleConstructor;
+    use crate::capsule_graph_builder::CapsuleGraphBuilder;
+    use crate::validator_optimizer::ValidatorOptimizer;
+    use crate::exporter::Exporter;
+
+    let scanner = FileScanner::new(
+        vec!["**/*.rs".into(), "**/*.ts".into(), "**/*.js".into(), "**/*.py".into(), "**/*.java".into(), "**/*.go".into(), "**/*.cpp".into(), "**/*.c".into()],
+        vec!["**/target/**".into(), "**/node_modules/**".into(), "**/.git/**".into(), "**/dist/**".into(), "**/build/**".into()],
+        Some(6),
+    ).map_err(|e| e.to_string())?;
+    let files = scanner.scan_files(Path::new(project_path)).map_err(|e| e.to_string())?;
+
+    let mut parser = ParserAST::new().map_err(|e| e.to_string())?;
+    let constructor = CapsuleConstructor::new();
+    let mut capsules: Vec<Capsule> = Vec::new();
+
+    for file in &files {
+        if let Ok(content) = std::fs::read_to_string(&file.path) {
+            if let Ok(nodes) = parser.parse_file(&file.path, &content, &file.file_type) {
+                let mut caps = constructor.create_capsules(&nodes, &file.path.clone()).map_err(|e| e.to_string())?;
+                capsules.append(&mut caps);
+            }
+        }
+    }
+    if capsules.is_empty() { return Err("No capsules".into()); }
+    let mut builder = CapsuleGraphBuilder::new();
+    let graph = builder.build_graph(&capsules).map_err(|e| e.to_string())?;
+    let validator = ValidatorOptimizer::new();
+    let graph = validator.validate_and_optimize(&graph).map_err(|e| e.to_string())?;
+    let exporter = Exporter::new();
+    exporter.export_to_mermaid(&graph).map_err(|e| e.to_string())
+}
+
+fn run_deep_pipeline(project_path: &str) -> std::result::Result<String, String> {
+    use crate::file_scanner::FileScanner;
+    use crate::parser_ast::ParserAST;
+    use crate::capsule_constructor::CapsuleConstructor;
+    use crate::capsule_graph_builder::CapsuleGraphBuilder;
+    use crate::validator_optimizer::ValidatorOptimizer;
+
+    let scanner = FileScanner::new(
+        vec!["**/*.rs".into(), "**/*.ts".into(), "**/*.js".into(), "**/*.py".into(), "**/*.java".into(), "**/*.go".into(), "**/*.cpp".into(), "**/*.c".into()],
+        vec!["**/target/**".into(), "**/node_modules/**".into(), "**/.git/**".into(), "**/dist/**".into(), "**/build/**".into()],
+        Some(10),
+    ).map_err(|e| e.to_string())?;
+    let files = scanner.scan_files(Path::new(project_path)).map_err(|e| e.to_string())?;
+
+    let mut parser = ParserAST::new().map_err(|e| e.to_string())?;
+    let constructor = CapsuleConstructor::new();
+    let mut capsules: Vec<Capsule> = Vec::new();
+
+    for file in &files {
+        if let Ok(content) = std::fs::read_to_string(&file.path) {
+            if let Ok(nodes) = parser.parse_file(&file.path, &content, &file.file_type) {
+                let mut caps = constructor.create_capsules(&nodes, &file.path.clone()).map_err(|e| e.to_string())?;
+                capsules.append(&mut caps);
+            }
+        }
+    }
+
+    let mut builder = CapsuleGraphBuilder::new();
+    let graph = builder.build_graph(&capsules).map_err(|e| e.to_string())?;
+    let validator = ValidatorOptimizer::new();
+    let validated_graph = validator.validate_and_optimize(&graph).map_err(|e| e.to_string())?;
+
+    let result = AnalysisResult {
+        graph: validated_graph,
+        warnings: Vec::new(),
+        recommendations: vec![
+            "Граф построен с использованием полного пайплайна".to_string(),
+        ],
+        export_formats: vec![ExportFormat::JSON, ExportFormat::Mermaid, ExportFormat::DOT, ExportFormat::SVG, ExportFormat::AICompact],
+    };
+
+    Ok(serde_json::to_string_pretty(&result).map_err(|e| e.to_string())?)
 }
 
 pub fn print_help() {
