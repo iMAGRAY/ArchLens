@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use futures_util::Stream;
 use axum::{routing::{get, post}, Router, response::sse::{Event, Sse}, extract::State, Json};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::thread;
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
@@ -194,6 +194,7 @@ fn env_test_delay_ms() -> Option<u64> {
 }
 
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let t0 = Instant::now();
     let path = ensure_absolute_path(&args.project_path);
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
@@ -202,7 +203,7 @@ async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Va
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
         export::generate_ai_compact(path.to_string_lossy().as_ref())
     });
-    match tokio::time::timeout(timeout, handle).await {
+    let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(md)) => {
                 let txt = format_export_markdown(md, &lv);
@@ -211,10 +212,13 @@ async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Va
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
         Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
-    }
+    };
+    tracing::info!(target: "archlens_mcp", action = "export_ai_compact", ms = %t0.elapsed().as_millis());
+    out
 }
 
 async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let t0 = Instant::now();
     let path = ensure_absolute_path(&args.project_path);
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
@@ -223,7 +227,7 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
         stats::get_project_structure(path.to_string_lossy().as_ref())
     });
-    match tokio::time::timeout(timeout, handle).await {
+    let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(structure)) => {
                 let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
@@ -232,10 +236,13 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
         Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
-    }
+    };
+    tracing::info!(target: "archlens_mcp", action = "structure_get", ms = %t0.elapsed().as_millis());
+    out
 }
 
 async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let t0 = Instant::now();
     let path = ensure_absolute_path(&args.project_path);
     let kind = args.diagram_type.as_deref().unwrap_or("mermaid");
     if kind != "mermaid" { return Err(axum::http::StatusCode::BAD_REQUEST); }
@@ -249,7 +256,7 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
         cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
             .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
     });
-    match tokio::time::timeout(timeout, handle).await {
+    let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
             Ok(Ok(mmd)) => {
                 let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
@@ -258,7 +265,9 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
             _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
         Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
-    }
+    };
+    tracing::info!(target: "archlens_mcp", action = "diagram_generate", ms = %t0.elapsed().as_millis());
+    out
 }
 
 async fn get_schemas() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
@@ -441,6 +450,11 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // init tracing (env-controlled)
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
+        .try_init();
+
     // 1) Генерация JSON схем во время запуска (можно вынести в build.rs при необходимости)
     let schemas_dir = PathBuf::from("out/schemas");
     fs::create_dir_all(&schemas_dir).ok();
@@ -454,6 +468,9 @@ async fn main() -> anyhow::Result<()> {
     write_schema("diagram_args", schemars::schema_for!(DiagramArgs));
     write_schema("resource_read_args", schemars::schema_for!(ResourceReadArgs));
     write_schema("prompt_get_args", schemars::schema_for!(PromptGetArgs));
+    // Output models
+    write_schema("model_project_stats", schemars::schema_for!(stats::ProjectStats));
+    write_schema("model_project_structure", schemars::schema_for!(stats::ProjectStructure));
 
     // 2) HTTP сервер (Streamable)
     let port: u16 = std::env::var("ARCHLENS_MCP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(5178);
