@@ -129,7 +129,7 @@ fn build_graph_mermaid(project_path: &str) -> std::result::Result<String, String
     exporter.export_to_mermaid(&graph).map_err(|e| e.to_string())
 }
 
-fn run_deep_pipeline(project_path: &str) -> std::result::Result<String, String> {
+pub fn run_deep_pipeline(project_path: &str) -> std::result::Result<String, String> {
     use crate::file_scanner::FileScanner;
     use crate::parser_ast::ParserAST;
     use crate::capsule_constructor::CapsuleConstructor;

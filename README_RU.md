@@ -525,4 +525,41 @@ focus_critical = false
 
 *Поставьте ⭐ этому репозиторию, если он вам помог!*
 
-</div> 
+</div>
+
+## 🔌 MCP Сервер на Rust
+
+- Новый бинарник: `archlens-mcp` (STDIO JSON-RPC + Streamable HTTP/SSE)
+- Транспорты:
+  - STDIO: клиент запускает сервер как подпроцесс; методы: `tools/list`, `tools/call`, `resources/list`, `prompts/list`
+  - HTTP (Streamable): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`
+- Инструменты:
+  - `arch.refresh` — обновление контекста
+  - `analyze.project` — анализ (опция `deep: true` для полного пайплайна)
+  - `export.ai_compact` — AI‑компакт отчёт
+  - `structure.get` — структура проекта
+  - `graph.build` — Mermaid диаграмма
+- JSON Schema: автоматически генерируются в `out/schemas/*.schema.json` (через `schemars`), доступны также через HTTP `/schemas/list`.
+
+### Примеры
+
+STDIO:
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"structure.get","arguments":{"project_path":"."}}}
+```
+
+HTTP:
+```bash
+# AI‑compact
+curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":"."}'
+
+# Структура
+curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":"."}'
+
+# Диаграмма (Mermaid)
+curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid"}'
+
+# Список схем
+curl -s localhost:5178/schemas/list
+``` 

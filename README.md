@@ -34,7 +34,7 @@
 - **Risk Assessment**: Automated architectural risk evaluation
 
 ### 🤖 **AI-Ready Output**
-- **MCP Server**: Direct integration with Claude and other AI assistants
+- **MCP Server (Rust)**: Official STDIO and Streamable HTTP transports with JSON Schema publishing
 - **Structured Reports**: JSON/Markdown exports optimized for AI consumption
 - **Interactive Diagrams**: Mermaid diagrams for visual architecture representation
 - **Context-Rich**: Detailed explanations suitable for AI-assisted refactoring
@@ -117,13 +117,16 @@ cargo build --release
 
 ## 🤖 AI Integration
 
-### 🔌 MCP Server (Model Context Protocol)
+### 🔌 MCP Server (Model Context Protocol, Rust)
 
 ArchLens includes a powerful MCP server for seamless AI assistant integration:
 
 - Accepts absolute and relative paths ('.', './src') — resolved to absolute safely.
 - `detail_level`: summary (default) | standard | full. Compact by default to minimize tokens without losing signal.
 - CLI deep pipeline: `./archlens analyze . --deep` (scan → AST → capsules → graph → validators).
+- Rust MCP binary: `archlens-mcp` with STDIO JSON-RPC and HTTP endpoints (POST/SSE).
+  - STDIO methods: `tools/list`, `tools/call`, `resources/list`, `prompts/list`
+  - HTTP endpoints: `/export/ai_compact`, `/structure/get`, `/diagram/generate`, `/sse/refresh`, `/schemas/list`
 
 #### 🛠️ Setup with Claude Desktop
 
