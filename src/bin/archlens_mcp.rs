@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
-use std::io::{Read, Write};
+use std::io::Read; // needed for cache_get
 use std::path::Path; // added
 use std::process::Command; // added
 
@@ -239,34 +239,33 @@ fn strip_code_blocks(md: &str) -> String {
     out
 }
 
-fn canonical_section_key(name: &str) -> &str {
+fn canonical_section_key<'a>(name: &'a str) -> String {
     let n = name.trim().to_lowercase();
     match n.as_str() {
-        "summary" => "## summary",
-        "problems" | "problems_validated" => "## problems (validated)",
-        "problems_heuristic" => "## problems (heuristic)",
-        "cycles" | "cycles (top)" => "## cycles (top)",
-        "coupling" | "top coupling" => "## top coupling",
-        "complexity" | "top complexity components" => "## top complexity components",
-        "layers" => "## layers",
-        other => other,
+        "summary" => "## summary".to_string(),
+        "problems" | "problems_validated" => "## problems (validated)".to_string(),
+        "problems_heuristic" => "## problems (heuristic)".to_string(),
+        "cycles" | "cycles (top)" => "## cycles (top)".to_string(),
+        "coupling" | "top coupling" => "## top coupling".to_string(),
+        "complexity" | "top complexity components" => "## top complexity components".to_string(),
+        "layers" => "## layers".to_string(),
+        other => other.to_string(),
     }
 }
 
 fn filter_markdown_sections(md: &str, sections: &Option<Vec<String>>) -> String {
     if sections.is_none() { return md.to_string(); }
-    let wanted: Vec<String> = sections.as_ref().unwrap().iter().map(|s| canonical_section_key(s).to_string()).collect();
+    let wanted: Vec<String> = sections.as_ref().unwrap().iter().map(|s| canonical_section_key(s)).collect();
     let mut out = String::new();
     let mut include = false;
     for line in md.lines() {
         if line.starts_with("# ") {
-            // always keep top title
             if out.is_empty() { out.push_str(line); out.push('\n'); }
             continue;
         }
         if line.starts_with("## ") {
-            let key = canonical_section_key(line).to_string();
-            include = wanted.iter().any(|w| key.starts_with(&w));
+            let key = canonical_section_key(line);
+            include = wanted.iter().any(|w| key.starts_with(w));
             if include { out.push_str(line); out.push('\n'); }
             continue;
         }
@@ -519,9 +518,10 @@ async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_js
     let lv = level(&args.detail_level).to_string();
     let timeout = Duration::from_millis(env_timeout_ms());
     let delay = env_test_delay_ms();
+    let p = path.clone();
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
-        stats::get_project_structure(path.to_string_lossy().as_ref())
+        stats::get_project_structure(p.to_string_lossy().as_ref())
     });
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
@@ -554,12 +554,13 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let p = path.clone();
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
-        cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
-            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
+        let res = cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
+            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()));
+        res
     });
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
-            Ok(Ok(Ok(mmd))) => {
+            Ok(Ok(mmd)) => {
                 let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
                 let text = clamp_text_with_limit(&text, args.max_output_chars);
                 let etag = content_etag(&text);
@@ -705,6 +706,8 @@ fn fs_dir_fingerprint(path: &Path) -> String {
     let mut total_files: u64 = 0;
     let mut total_bytes: u64 = 0;
     let mut max_mtime: u64 = 0;
+    let mut entries_seen: u64 = 0;
+    let mut file_entries: Vec<(String, u64)> = Vec::new();
 
     fn is_ignored(p: &Path) -> bool {
         let ignored = [".git", "target", "node_modules", "dist", "build", ".next", ".venv", "venv"];
@@ -714,21 +717,30 @@ fn fs_dir_fingerprint(path: &Path) -> String {
             .unwrap_or(false)
     }
 
-    fn walk(dir: &Path, total_files: &mut u64, total_bytes: &mut u64, max_mtime: &mut u64) {
+    fn rel_of(root: &Path, p: &Path) -> String {
+        if let Ok(q) = p.strip_prefix(root) {
+            if let Some(s) = q.to_str() { return s.to_string(); }
+        }
+        let lossy = p.to_string_lossy().to_string();
+        lossy
+    }
+
+    fn walk(root: &Path, dir: &Path, total_files: &mut u64, total_bytes: &mut u64, max_mtime: &mut u64, entries_seen: &mut u64, file_entries: &mut Vec<(String, u64)>) {
         if is_ignored(dir) { return; }
         if let Ok(rd) = fs::read_dir(dir) {
             for ent in rd.flatten() {
+                *entries_seen += 1;
                 let p = ent.path();
                 if is_ignored(&p) { continue; }
                 if let Ok(meta) = ent.metadata() {
                     if meta.is_dir() {
-                        walk(&p, total_files, total_bytes, max_mtime);
+                        walk(root, &p, total_files, total_bytes, max_mtime, entries_seen, file_entries);
                     } else if meta.is_file() {
                         *total_files += 1;
                         *total_bytes = total_bytes.saturating_add(meta.len());
+                        file_entries.push((rel_of(root, &p), meta.len()));
                         if let Ok(modified) = meta.modified() {
                             if let Ok(elapsed) = modified.elapsed() {
-                                // Convert to a decreasing value; use now - elapsed
                                 let now = std::time::SystemTime::now();
                                 if let Ok(nowdur) = now.duration_since(std::time::UNIX_EPOCH) {
                                     let mtime = nowdur.saturating_sub(elapsed).as_secs();
@@ -742,19 +754,39 @@ fn fs_dir_fingerprint(path: &Path) -> String {
         }
     }
 
-    walk(path, &mut total_files, &mut total_bytes, &mut max_mtime);
+    walk(path, path, &mut total_files, &mut total_bytes, &mut max_mtime, &mut entries_seen, &mut file_entries);
+    // include directory metadata mtime if available
+    if let Ok(meta) = fs::metadata(path) {
+        if let Ok(modified) = meta.modified() {
+            if let Ok(elapsed) = modified.elapsed() {
+                let now = std::time::SystemTime::now();
+                if let Ok(nowdur) = now.duration_since(std::time::UNIX_EPOCH) {
+                    let dir_mtime = nowdur.saturating_sub(elapsed).as_secs();
+                    if dir_mtime > max_mtime { max_mtime = dir_mtime; }
+                }
+            }
+        }
+    }
+    // stable order
+    file_entries.sort_by(|a,b| a.0.cmp(&b.0));
+
     let mut hasher = DefaultHasher::new();
     total_files.hash(&mut hasher);
     total_bytes.hash(&mut hasher);
     max_mtime.hash(&mut hasher);
+    entries_seen.hash(&mut hasher);
+    for (name, sz) in file_entries { name.hash(&mut hasher); sz.hash(&mut hasher); }
     format!("{:016x}", hasher.finish())
 }
 
 fn project_content_fingerprint(path: &Path) -> String {
+    let mut hasher = DefaultHasher::new();
     if let Some(head) = git_head_and_dirty(path) {
-        return head;
+        head.hash(&mut hasher);
     }
-    fs_dir_fingerprint(path)
+    let fsfp = fs_dir_fingerprint(path);
+    fsfp.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn export_cache_key(path: &str, lv: &str, sections: &Option<Vec<String>>, top_n: Option<usize>, max_chars: Option<usize>) -> String {
@@ -1143,6 +1175,8 @@ mod tests {
         fs::write(dir.join("a.txt"), b"hello").unwrap();
         let p = dir.canonicalize().unwrap();
         let k1 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        // ensure mtime tick
+        std::thread::sleep(std::time::Duration::from_millis(20));
         // change FS: add file to ensure different fingerprint
         fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
         let k2 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
@@ -1282,11 +1316,7 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let txt = format_structure_result(path.to_string_lossy().as_ref(), &st, level(&args.detail_level));
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
-                    if args.etag.as_deref() == Some(&etag) {
-                        Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
-                    } else {
-                        Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]})))
-                    }
+                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                 }
                 "graph.build" => {
                     let args: DiagramArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -1296,11 +1326,7 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let txt = format_diagram_text(mmd, path.to_string_lossy().as_ref(), level(&args.detail_level));
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
-                    if args.etag.as_deref() == Some(&etag) {
-                        Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
-                    } else {
-                        Ok(Json(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]})))
-                    }
+                    Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                 }
                 "analyze.project" => {
                     let args: AnalyzeArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -1312,22 +1338,14 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                         let txt = clamp_text(&res, if lv=="full" { MAX_OUTPUT_CHARS } else if lv=="standard" { SUMMARY_LIMIT_CHARS * 2 } else { SUMMARY_LIMIT_CHARS });
                         let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                         let etag = content_etag(&txt);
-                        if args.etag.as_deref() == Some(&etag) {
-                            Ok(serde_json::json!({"status":"not_modified","etag": etag}))
-                        } else {
-                            Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
-                        }
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                     } else {
                         let s = stats::get_project_stats(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                         let lv = level(&args.detail_level);
                         let txt = format_analysis_result(path.to_string_lossy().as_ref(), &s, lv);
                         let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                         let etag = content_etag(&txt);
-                        if args.etag.as_deref() == Some(&etag) {
-                            Ok(serde_json::json!({"status":"not_modified","etag": etag}))
-                        } else {
-                            Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
-                        }
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                     }
                 }
                 "arch.refresh" => {
@@ -1345,12 +1363,14 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
     }
 }
 
+async fn post_schema_read(Json(_payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    Err(axum::http::StatusCode::BAD_REQUEST)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // init tracing (env-controlled)
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
-        .try_init();
+    let _ = tracing_subscriber::fmt().try_init();
 
     // 1) Генерация JSON схем во время запуска (можно вынести в build.rs при необходимости)
     let schemas_dir = PathBuf::from("out/schemas");
@@ -1386,22 +1406,25 @@ async fn main() -> anyhow::Result<()> {
 
     // 2) HTTP сервер (Streamable)
     let port: u16 = std::env::var("ARCHLENS_MCP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(5178);
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = ("0.0.0.0".to_string(), port);
     let app = build_http_router();
-    let http = axum::Server::bind(&addr.parse()?)
-        .serve(app.into_make_service());
+    let http = axum::serve(tokio::net::TcpListener::bind(addr).await?, app.into_make_service());
 
     // 3) STDIO JSON-RPC петля
-    let stdio = tokio::spawn(async move {
+    let (tx_lines, mut rx_lines) = tokio::sync::mpsc::unbounded_channel::<String>();
+    std::thread::spawn(move || {
         let stdin = io::stdin();
-        let mut lines = stdin.lock().lines();
-        while let Some(Ok(line)) = lines.next() {
+        for line in stdin.lock().lines().flatten() {
+            let _ = tx_lines.send(line);
+        }
+    });
+    let stdio = tokio::spawn(async move {
+        while let Some(line) = rx_lines.recv().await {
             if line.trim().is_empty() { continue; }
             let req: Result<RpcRequest, _> = serde_json::from_str(&line);
             match req {
                 Ok(r) => {
                     let id = r.id.clone();
-                    // Detect heavy tools to apply timeout
                     let mut handled_with_timeout = false;
                     if r.method == "tools/call" {
                         if let Some(params) = r.params.clone() {
@@ -1421,11 +1444,11 @@ async fn main() -> anyhow::Result<()> {
                                     });
                                     match tokio::time::timeout(timeout, handle).await {
                                         Ok(joined) => match joined {
-                                            Ok(Ok(val)) => write_json_line(id, Some(val), None),
-                                            Ok(Err(msg)) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: msg})),
-                                            Err(e) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: format!("join error: {}", e)})),
+                                            Ok(Ok(val)) => write_json_line(id.clone(), Some(val), None),
+                                            Ok(Err(msg)) => write_json_line(id.clone(), Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: msg})),
+                                            Err(e) => write_json_line(id.clone(), Option::<serde_json::Value>::None, Some(RpcError{code:-32603, message: format!("join error: {}", e)})),
                                         },
-                                        Err(_) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError{code:-32000, message: "timeout".into()})),
+                                        Err(_) => write_json_line(id.clone(), Option::<serde_json::Value>::None, Some(RpcError{code:-32000, message: "timeout".into()})),
                                     }
                                 }
                             }

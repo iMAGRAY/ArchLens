@@ -20,18 +20,26 @@ async fn main() {
         }
     }
     
-    // Иначе запускаем GUI режим
-    tauri::Builder::default()
-        .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![
-            analyze_project,
-            get_analysis_status,
-            export_analysis,
-            generate_architecture_diagram,
-            generate_svg_architecture_diagram,
-            get_project_structure,
-            validate_project_path
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    // Иначе запускаем GUI режим (только когда собрано с фичей `gui`)
+    #[cfg(feature = "gui")]
+    {
+        tauri::Builder::default()
+            .manage(AppState::default())
+            .invoke_handler(tauri::generate_handler![
+                analyze_project,
+                get_analysis_status,
+                export_analysis,
+                generate_architecture_diagram,
+                generate_svg_architecture_diagram,
+                get_project_structure,
+                validate_project_path
+            ])
+            .run(tauri::generate_context!())
+            .expect("error while running tauri application");
+    }
+
+    #[cfg(not(feature = "gui"))]
+    {
+        eprintln!("GUI not built. Re-run with --features gui to enable Tauri.");
+    }
 }

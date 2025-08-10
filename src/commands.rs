@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+#[cfg(feature = "gui")]
 use tauri::State;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -54,6 +55,7 @@ pub struct ProjectStructure {
 }
 
 /// Расширенная команда анализа проекта с полным пайплайном
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn analyze_project_advanced(
     project_path: String,
@@ -184,6 +186,7 @@ pub async fn analyze_project_advanced(
 }
 
 /// Команда запуска интеграционных тестов
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn run_integration_tests(
     project_path: Option<String>,
@@ -207,6 +210,7 @@ pub async fn run_integration_tests(
 }
 
 /// Команда экспорта в интерактивный HTML
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn export_interactive_html(
     state: State<'_, AppState>,
@@ -225,6 +229,7 @@ pub async fn export_interactive_html(
 }
 
 /// Команда получения diff-анализа
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_diff_analysis(
     state: State<'_, AppState>,
@@ -247,6 +252,7 @@ pub async fn get_diff_analysis(
 }
 
 /// Команда получения продвинутых метрик
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_advanced_metrics(
     capsule_name: String,
@@ -279,6 +285,7 @@ pub async fn get_advanced_metrics(
 } 
 
 /// Команда обратной совместимости - упрощенный анализ проекта
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn analyze_project(
     project_path: String,
@@ -447,6 +454,7 @@ fn determine_capsule_type(file_type: &FileType) -> CapsuleType {
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_analysis_status(
     state: State<'_, AppState>,
@@ -458,6 +466,7 @@ pub async fn get_analysis_status(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn export_analysis(
     format: String,
@@ -495,6 +504,7 @@ pub async fn export_analysis(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn generate_architecture_diagram(
     state: State<'_, AppState>,
@@ -511,6 +521,7 @@ pub async fn generate_architecture_diagram(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn generate_svg_architecture_diagram(
     state: State<'_, AppState>,
@@ -527,6 +538,7 @@ pub async fn generate_svg_architecture_diagram(
     }
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn get_project_structure(
     project_path: String,
@@ -587,6 +599,7 @@ pub async fn get_project_structure(
     })
 }
 
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn validate_project_path(
     project_path: String,

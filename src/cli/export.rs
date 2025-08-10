@@ -51,11 +51,13 @@ fn generate_ai_compact_from_graph(project_path: &str) -> std::result::Result<Str
     let mut capsules = Vec::new();
     for file in &files {
         // Привязываем узлы к файлам (простая эвристика по пути)
-        let file_nodes: Vec<_> = all_nodes.iter().filter(|n| file.path.to_string_lossy().contains(&n.name)).clone().collect();
+        let file_nodes: Vec<_> = all_nodes.iter().filter(|n| file.path.to_string_lossy().contains(&n.name)).collect();
         if file_nodes.is_empty() {
             continue;
         }
-        let mut file_caps = constructor.create_capsules(&file_nodes, &file.path.clone()).map_err(|e| e.to_string())?;
+        // clone AST elements to own Vec to match &[ASTElement]
+        let owned_nodes: Vec<_> = file_nodes.into_iter().cloned().collect();
+        let mut file_caps = constructor.create_capsules(&owned_nodes, &file.path).map_err(|e| e.to_string())?;
         capsules.append(&mut file_caps);
     }
 
