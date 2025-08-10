@@ -6,13 +6,13 @@ use std::io::Read; // needed for cache_get
 use std::path::Path; // added
 use std::process::Command;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
     fs,
     io::{self, BufRead, Write},
     path::PathBuf,
 };
-use tokio::sync::mpsc;
+
 
 use archlens::{
     cli::{self, diagram, export, stats},
@@ -488,12 +488,6 @@ fn env_test_delay_ms() -> Option<u64> {
         .and_then(|s| s.parse().ok())
 }
 
-fn env_enable_http() -> bool {
-    match std::env::var("ARCHLENS_ENABLE_HTTP").ok().as_deref() {
-        Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("off") => false,
-        _ => true,
-    }
-}
 
 // Recommendation thresholds (configurable via env)
 #[derive(Clone, Copy, Debug)]
