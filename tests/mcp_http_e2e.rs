@@ -44,7 +44,7 @@ fn http_export_and_schemas() {
     // export/ai_compact
     let r2 = client
         .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
-        .json(&serde_json::json!({"project_path":".","detail_level":"summary"}))
+        .json(&serde_json::json!({"project_path":"tests/fixtures/small_project","detail_level":"summary"}))
         .send();
     assert!(r2.is_ok(), "export ai_compact POST should succeed");
 

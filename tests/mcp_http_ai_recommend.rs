@@ -45,7 +45,7 @@ fn http_ai_recommend_with_summary() {
             "http://127.0.0.1:{}/export/ai_summary_json",
             port
         ))
-        .json(&serde_json::json!({"project_path":"src","top_n":3}))
+        .json(&serde_json::json!({"project_path":"tests/fixtures/small_project","top_n":3}))
         .send();
     assert!(sum_resp.is_ok(), "summary POST should succeed");
     let sum_json = sum_resp
@@ -60,7 +60,7 @@ fn http_ai_recommend_with_summary() {
     // Then, call recommend with that summary
     let rec_resp = client
         .post(&format!("http://127.0.0.1:{}/ai/recommend", port))
-        .json(&serde_json::json!({"project_path":"src","json": summary}))
+        .json(&serde_json::json!({"project_path":"tests/fixtures/small_project","json": summary}))
         .send();
     assert!(rec_resp.is_ok(), "recommend POST should succeed");
     let rec_json = rec_resp

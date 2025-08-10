@@ -38,7 +38,7 @@ fn http_export_times_out() {
 
     let resp = client
         .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
-        .json(&serde_json::json!({"project_path":"."}))
+        .json(&serde_json::json!({"project_path":"tests/fixtures/small_project"}))
         .send();
 
     assert!(resp.is_ok(), "request should complete");
