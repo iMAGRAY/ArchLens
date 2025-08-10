@@ -725,12 +725,19 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
         return serde_json::json!({"status":"ok","recommendations": recs});
     }
     let cycles_count = json.get("cycles_top").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
-    let top_coupling_len = json.get("top_coupling").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let top_coupling = json.get("top_coupling").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let top_coupling_len = top_coupling.len();
     let problems = json.get("problems_validated").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     let high_sev = problems.iter().any(|p| p.get("severity").and_then(|s| s.get("H")).and_then(|h| h.as_u64()).unwrap_or(0) > 0);
-    let complexity_avg = json.get("summary").and_then(|s| s.get("complexity_avg")).and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let coupling_index = json.get("summary").and_then(|s| s.get("coupling_index")).and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let cohesion_index = json.get("summary").and_then(|s| s.get("cohesion_index")).and_then(|x| x.as_f64()).unwrap_or(1.0);
+    let high_sev_cats = problems.iter().filter(|p| p.get("severity").and_then(|s| s.get("H")).and_then(|h| h.as_u64()).unwrap_or(0) > 0).count();
+    let summary = json.get("summary").cloned().unwrap_or(serde_json::json!({}));
+    let complexity_avg = summary.get("complexity_avg").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let coupling_index = summary.get("coupling_index").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let cohesion_index = summary.get("cohesion_index").and_then(|x| x.as_f64()).unwrap_or(1.0);
+    let components_total = summary.get("components").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+    let layers = summary.get("layers").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let max_layer = layers.iter().filter_map(|l| l.get("count").and_then(|c| c.as_u64())).max().unwrap_or(0) as usize;
+
     if cycles_count > 0 {
         recs.push(serde_json::json!({
             "tool":"graph.build",
@@ -745,6 +752,14 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
             "why": "High-severity validator problems present; drill down into categories and top impacted components."
         }));
     }
+    // Layer imbalance: if крупнейший слой > 60% компонентов, показать слои
+    if components_total > 0 && max_layer * 100 / components_total >= 60 {
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary","sections":["layers","problems_validated"], "max_output_chars": 14000, "use_cache": true},
+            "why": "Layer imbalance detected; review layer distribution and associated problems."
+        }));
+    }
     if coupling_index > 0.7 || cohesion_index < 0.3 || top_coupling_len > 0 {
         recs.push(serde_json::json!({
             "tool":"export.ai_compact",
@@ -757,6 +772,13 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
             "tool":"export.ai_compact",
             "arguments": {"project_path": project_path, "detail_level":"summary","sections":["top_complexity_components"], "top_n": 10, "max_output_chars": 16000, "use_cache": true},
             "why": "High average complexity; inspect top complex components for refactoring opportunities."
+        }));
+    }
+    // If many high-severity categories, suggest refactor plan prompt
+    if high_sev_cats >= 2 {
+        recs.push(serde_json::json!({
+            "prompt":"ai.refactor.plan",
+            "why": "Multiple high-severity categories detected; propose a pragmatic, risk-aware refactoring plan."
         }));
     }
     if !focus.is_empty() {
