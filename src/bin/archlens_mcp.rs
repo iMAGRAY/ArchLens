@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use futures_util::Stream;
 use axum::{routing::{get, post}, Router, response::sse::{Event, Sse}, extract::State, Json};
+use std::time::Duration;
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
 use regex::Regex;
@@ -183,27 +184,41 @@ fn format_diagram_text(mmd: String, project_path: &str, detail_level: &str) -> S
     format!("# 📊 DIAGRAM\nPath: {}\nType: mermaid\n\n```mermaid\n{}\n```", project_path, body)
 }
 
+fn env_timeout_ms() -> u64 {
+    std::env::var("ARCHLENS_TIMEOUT_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(60_000)
+}
+
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let path = ensure_absolute_path(&args.project_path);
-    match export::generate_ai_compact(path.to_string_lossy().as_ref()) {
-        Ok(md) => {
-            let lv = level(&args.detail_level).to_string();
-            let txt = format_export_markdown(md, &lv);
-            Ok(Json(serde_json::json!({"status":"ok","output": txt})))
+    let lv = level(&args.detail_level).to_string();
+    let timeout = Duration::from_millis(env_timeout_ms());
+    let handle = tokio::task::spawn_blocking(move || export::generate_ai_compact(path.to_string_lossy().as_ref()));
+    match tokio::time::timeout(timeout, handle).await {
+        Ok(joined) => match joined {
+            Ok(Ok(md)) => {
+                let txt = format_export_markdown(md, &lv);
+                Ok(Json(serde_json::json!({"status":"ok","output": txt})))
+            },
+            _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
-        Err(_e) => Err(axum::http::StatusCode::BAD_REQUEST),
+        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
     }
 }
 
 async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let path = ensure_absolute_path(&args.project_path);
-    match stats::get_project_structure(path.to_string_lossy().as_ref()) {
-        Ok(structure) => {
-            let lv = level(&args.detail_level).to_string();
-            let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
-            Ok(Json(serde_json::json!({"status":"ok","text": text})))
+    let lv = level(&args.detail_level).to_string();
+    let timeout = Duration::from_millis(env_timeout_ms());
+    let handle = tokio::task::spawn_blocking(move || stats::get_project_structure(path.to_string_lossy().as_ref()));
+    match tokio::time::timeout(timeout, handle).await {
+        Ok(joined) => match joined {
+            Ok(Ok(structure)) => {
+                let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
+                Ok(Json(serde_json::json!({"status":"ok","text": text})))
+            },
+            _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
-        Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
+        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
     }
 }
 
@@ -212,15 +227,22 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let kind = args.diagram_type.as_deref().unwrap_or("mermaid");
     if kind != "mermaid" { return Err(axum::http::StatusCode::BAD_REQUEST); }
     let lv = level(&args.detail_level).to_string();
-    // Prefer full graph-based mermaid; fallback to simple import-based
-    let try_graph = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
-        .or_else(|_| diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()));
-    match try_graph {
-        Ok(mmd) => {
-            let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
-            Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
+    let timeout = Duration::from_millis(env_timeout_ms());
+    let p = path.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        // Prefer full graph-based mermaid; fallback to simple import-based
+        cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
+            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()))
+    });
+    match tokio::time::timeout(timeout, handle).await {
+        Ok(joined) => match joined {
+            Ok(Ok(mmd)) => {
+                let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
+                Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
+            },
+            _ => Err(axum::http::StatusCode::BAD_REQUEST)
         },
-        Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
+        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
     }
 }
 
