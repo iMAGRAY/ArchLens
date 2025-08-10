@@ -111,6 +111,36 @@ cargo build --release
 ./archlens diagram . mermaid --include-metrics
 ```
 
+### 🔍 Глубокий Анализ (CLI)
+
+```bash
+# Полный пайплайн (scan -> AST -> capsules -> graph -> validators)
+./archlens analyze . --deep > deep_analysis.json
+```
+
+### 🤖 MCP Параметры
+
+- `project_path`: принимает абсолютные и относительные пути ('.', './src')
+- `detail_level`: `summary` (по умолчанию) | `standard` | `full`
+- `deep`: `true` для запуска полного пайплайна
+
+```json
+{
+  "project_path": ".",
+  "detail_level": "summary",
+  "deep": true
+}
+```
+
+### 📦 AI Compact Отчет (Разделы)
+
+- Summary: суммарные метрики и средняя сложность
+- Problems (Heuristic): coupling/cohesion/сложность графа
+- Problems (Validated): агрегированные предупреждения валидаторов (топ категорий и компонентов)
+- Cycles (Top): топ циклов по длине (A -> B -> ... -> A)
+- Top Coupling: узлы‑«хабы» по степени
+- Top Complexity Components: топ‑10 компонентов по сложности
+
 ---
 
 ## 🤖 Интеграция с ИИ
