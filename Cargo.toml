@@ -35,12 +35,12 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
-# #ДОДЕЛАТЬ: Вернуть tree-sitter после решения проблем линковки
-# tree-sitter = "0.20"
-# tree-sitter-rust = "0.20"
-# tree-sitter-javascript = "0.20"
-# tree-sitter-typescript = "0.20"
-# tree-sitter-python = "0.20"
+# tree-sitter stack is optional; enable with `--features tree_sitter`
+# tree-sitter = { version = "0.20", optional = true }
+# tree-sitter-rust = { version = "0.20", optional = true }
+# tree-sitter-javascript = { version = "0.20", optional = true }
+# tree-sitter-typescript = { version = "0.20", optional = true }
+# tree-sitter-python = { version = "0.20", optional = true }
 thiserror = "1.0"
 anyhow = "1.0"
 walkdir = "2.4"
@@ -55,6 +55,8 @@ tokio = { version = "1.0", features = ["full"] }
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+# optional feature gate for tree-sitter based parsing (future work)
+tree_sitter = []
 default = []
 
 [profile.release]

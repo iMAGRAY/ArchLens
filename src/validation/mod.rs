@@ -16,7 +16,7 @@ pub use coupling::CouplingValidator;
 pub use cohesion::CohesionValidator;
 pub use patterns::{PatternDetector, ArchitecturePatternDetector, PatternCriteria};
 pub use solid::{SolidAnalyzer, SolidPrinciple};
-pub use cycles::CycleDetector;
+pub use cycles::CycleValidator;
 pub use layers::LayerValidator;
 pub use naming::NamingValidator;
 pub use optimizer::GraphOptimizer; 

@@ -19,7 +19,7 @@ pub use crate::validation::{
     CohesionValidator,
     PatternDetector,
     SolidAnalyzer,
-    CycleDetector,
+    CycleValidator,
     LayerValidator,
     NamingValidator,
     GraphOptimizer,

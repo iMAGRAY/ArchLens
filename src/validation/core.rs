@@ -5,7 +5,7 @@ use crate::types::Result;
 
 use super::{
     ComplexityValidator, CouplingValidator, CohesionValidator, 
-    PatternDetector, SolidAnalyzer, CycleDetector, LayerValidator, 
+    PatternDetector, SolidAnalyzer, CycleValidator, LayerValidator, 
     NamingValidator, GraphOptimizer
 };
 
@@ -22,7 +22,7 @@ pub struct ValidatorOptimizer {
     coupling_validator: CouplingValidator,
     cohesion_validator: CohesionValidator,
     pattern_detector: PatternDetector,
-    cycle_detector: CycleDetector,
+    cycle_validator: CycleValidator,
     layer_validator: LayerValidator,
     naming_validator: NamingValidator,
     optimizer: GraphOptimizer,
@@ -40,7 +40,7 @@ impl ValidatorOptimizer {
             coupling_validator: CouplingValidator::new(),
             cohesion_validator: CohesionValidator::new(),
             pattern_detector: PatternDetector::new(),
-            cycle_detector: CycleDetector::new(),
+            cycle_validator: CycleValidator::new(),
             layer_validator: LayerValidator::new(),
             naming_validator: NamingValidator::new(),
             optimizer: GraphOptimizer::new(),
@@ -56,7 +56,7 @@ impl ValidatorOptimizer {
         self.complexity_validator.validate(&optimized_graph, &mut warnings)?;
         self.coupling_validator.validate(&optimized_graph, &mut warnings)?;
         self.cohesion_validator.validate(&optimized_graph, &mut warnings)?;
-        self.cycle_detector.validate(&optimized_graph, &mut warnings)?;
+        self.cycle_validator.validate(&optimized_graph, &mut warnings)?;
         self.layer_validator.validate(&optimized_graph, &mut warnings)?;
         self.naming_validator.validate(&optimized_graph, &mut warnings)?;
         self.pattern_detector.validate(&optimized_graph, &mut warnings)?;

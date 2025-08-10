@@ -4,9 +4,9 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct CycleDetector;
+pub struct CycleValidator;
 
-impl CycleDetector {
+impl CycleValidator {
     pub fn new() -> Self {
         Self
     }
