@@ -479,7 +479,7 @@ async fn get_presets() -> Result<Json<serde_json::Value>, axum::http::StatusCode
 }
 
 async fn get_recommendations(Json(payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let result = compute_recommendations(project_path, json_opt: payload.get("project_path"), focus_opt: payload.get("focus").and_then(|v| v.as_str()));
+    let result = compute_recommendations(".", payload.get("project_path"), payload.get("focus").and_then(|v| v.as_str()));
     Ok(Json(result))
 }
 
@@ -772,6 +772,64 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
         }));
     }
     serde_json::json!({"status":"ok","recommendations": recs})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_recommendations;
+    use serde_json::json;
+
+    fn tools_from(rec: &serde_json::Value) -> Vec<String> {
+        rec.get("recommendations")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|r| r.get("tool").and_then(|t| t.as_str()).map(|s| s.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn recommend_starts_with_summary_when_no_json() {
+        let res = compute_recommendations(".", None, None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_summary_json"));
+    }
+
+    #[test]
+    fn recommend_graph_build_when_cycles_present() {
+        let mock = json!({
+            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [{"path":["A","B","A"]}],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "graph.build"));
+    }
+
+    #[test]
+    fn recommend_problems_validated_when_high_severity() {
+        let mock = json!({
+            "summary": {"complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": [{"category":"complexity","count":5,"severity":{"H":1,"M":0,"L":0},"top_components":["X"],"hint":"reduce complexity"}]
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn recommend_top_complexity_when_high_avg() {
+        let mock = json!({
+            "summary": {"complexity_avg": 12.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
 }
 
 fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
