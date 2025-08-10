@@ -50,7 +50,7 @@ fn http_ai_summary_json_and_presets() {
     // /export/ai_summary_json
     let resp = client
         .post(&format!("http://127.0.0.1:{}/export/ai_summary_json", port))
-        .json(&serde_json::json!({"project_path":".","top_n":3,"max_output_chars":20000}))
+        .json(&serde_json::json!({"project_path":"src","top_n":3,"max_output_chars":20000}))
         .send();
     assert!(resp.is_ok(), "ai_summary_json POST should succeed");
     let payload = resp

@@ -37,12 +37,12 @@ fn http_detail_level_affects_size_and_content() {
     // export: summary vs full
     let r_sum = client
         .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
-        .json(&serde_json::json!({"project_path":".","detail_level":"summary"}))
+        .json(&serde_json::json!({"project_path":"src","detail_level":"summary"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>());
     let r_full = client
         .post(&format!("http://127.0.0.1:{}/export/ai_compact", port))
-        .json(&serde_json::json!({"project_path":".","detail_level":"full"}))
+        .json(&serde_json::json!({"project_path":"src","detail_level":"full"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>());
 
@@ -59,13 +59,13 @@ fn http_detail_level_affects_size_and_content() {
     // structure: standard longer than summary
     let st_sum = client
         .post(&format!("http://127.0.0.1:{}/structure/get", port))
-        .json(&serde_json::json!({"project_path":".","detail_level":"summary"}))
+        .json(&serde_json::json!({"project_path":"src","detail_level":"summary"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>())
         .ok();
     let st_std = client
         .post(&format!("http://127.0.0.1:{}/structure/get", port))
-        .json(&serde_json::json!({"project_path":".","detail_level":"standard"}))
+        .json(&serde_json::json!({"project_path":"src","detail_level":"standard"}))
         .send()
         .and_then(|r| r.json::<serde_json::Value>())
         .ok();

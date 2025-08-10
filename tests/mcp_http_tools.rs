@@ -53,7 +53,7 @@ fn http_tools_list_and_call() {
     });
     let r2 = client
         .post(&format!("http://127.0.0.1:{}/tools/call", port))
-        .json(&serde_json::json!({"name":"export.ai_summary_json","arguments":{"project_path":".","top_n":3}}))
+        .json(&serde_json::json!({"name":"export.ai_summary_json","arguments":{"project_path":"src","top_n":3}}))
         .send();
     assert!(r2.is_ok(), "/tools/call should respond");
 
