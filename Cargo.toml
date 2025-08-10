@@ -31,12 +31,8 @@ path = "src/bin/archlens_mcp.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-# behind feature to avoid GUI deps in headless tests
- tauri-build = { version = "1.0", features = [], optional = true }
 
 [dependencies]
-# GUI deps behind feature `gui`
- tauri = { version = "1.7", features = ["dialog-open", "dialog-save", "fs-copy-file", "fs-create-dir", "fs-exists", "fs-read-dir", "fs-read-file", "fs-remove-dir", "fs-remove-file", "fs-rename-file", "fs-write-file", "shell-open"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -59,15 +55,10 @@ ignore = "0.4"
 tokio = { version = "1.0", features = ["full"] }
 # New deps for MCP server
 schemars = { version = "0.8", features = ["preserve_order"] }
-tokio-stream = "0.1"
-futures-util = "0.3"
 
 [features]
-# default headless (no GUI/tauri) to keep CI/tests slim
+# default headless
  default = []
- gui = ["dep:tauri"]
- tauri_build = ["dep:tauri-build"]
- custom-protocol = ["tauri/custom-protocol"]
  # optional feature gate for tree-sitter based parsing (future work)
  tree_sitter = [
   "dep:tree-sitter",
@@ -75,7 +66,7 @@ futures-util = "0.3"
   "dep:tree-sitter-javascript",
   "dep:tree-sitter-typescript",
   "dep:tree-sitter-python"
-]
+ ]
 
 [profile.release]
 opt-level = 3
