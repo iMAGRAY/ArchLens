@@ -3,19 +3,19 @@
   "title": "ExportArgs",
   "type": "object",
   "required": [
-    "project_path"
+    "projectPath"
   ],
   "properties": {
-    "project_path": {
+    "projectPath": {
       "type": "string"
     },
-    "detail_level": {
+    "detailLevel": {
       "type": [
         "string",
         "null"
       ]
     },
-    "max_output_chars": {
+    "maxOutputChars": {
       "type": [
         "integer",
         "null"
@@ -32,7 +32,7 @@
         "type": "string"
       }
     },
-    "top_n": {
+    "topN": {
       "type": [
         "integer",
         "null"
@@ -46,13 +46,13 @@
         "null"
       ]
     },
-    "use_cache": {
+    "useCache": {
       "type": [
         "boolean",
         "null"
       ]
     },
-    "cache_ttl_ms": {
+    "cacheTtlMs": {
       "type": [
         "integer",
         "null"

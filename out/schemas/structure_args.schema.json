@@ -3,19 +3,19 @@
   "title": "StructureArgs",
   "type": "object",
   "required": [
-    "project_path"
+    "projectPath"
   ],
   "properties": {
-    "project_path": {
+    "projectPath": {
       "type": "string"
     },
-    "detail_level": {
+    "detailLevel": {
       "type": [
         "string",
         "null"
       ]
     },
-    "max_output_chars": {
+    "maxOutputChars": {
       "type": [
         "integer",
         "null"

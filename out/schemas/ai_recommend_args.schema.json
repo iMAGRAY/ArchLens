@@ -3,10 +3,10 @@
   "title": "AIRecommendArgs",
   "type": "object",
   "required": [
-    "project_path"
+    "projectPath"
   ],
   "properties": {
-    "project_path": {
+    "projectPath": {
       "type": "string"
     },
     "json": {

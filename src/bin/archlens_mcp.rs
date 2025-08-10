@@ -30,50 +30,76 @@ use regex::Regex;
 
 // =============== Types ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct AnalyzeArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
     pub deep: Option<bool>,
-    pub detail_level: Option<String>, // summary|standard|full
+    #[serde(alias = "detail_level")] // summary|standard|full
+    pub detail_level: Option<String>,
+    #[serde(alias = "max_output_chars")]
     pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
-    pub detail_level: Option<String>, // summary|standard|full
+    #[serde(alias = "detail_level")] // summary|standard|full
+    pub detail_level: Option<String>,
+    #[serde(alias = "max_output_chars")]
     pub max_output_chars: Option<usize>,
     pub sections: Option<Vec<String>>, // e.g., ["summary","problems_validated","cycles"] or exact headers
-    pub top_n: Option<usize>,          // limit list items in sections
+    #[serde(alias = "top_n")]          // limit list items in sections
+    pub top_n: Option<usize>,
     pub etag: Option<String>,
-    pub use_cache: Option<bool>, // default true
+    #[serde(alias = "use_cache")] // default true
+    pub use_cache: Option<bool>,
+    #[serde(alias = "cache_ttl_ms")]
     pub cache_ttl_ms: Option<u64>,
     pub force: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct StructureArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
-    pub detail_level: Option<String>, // summary|standard|full
+    #[serde(alias = "detail_level")] // summary|standard|full
+    pub detail_level: Option<String>,
+    #[serde(alias = "max_output_chars")]
     pub max_output_chars: Option<usize>,
     pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagramArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
+    #[serde(alias = "diagram_type")]
     pub diagram_type: Option<String>,
-    pub detail_level: Option<String>, // summary|standard|full
+    #[serde(alias = "detail_level")] // summary|standard|full
+    pub detail_level: Option<String>,
+    #[serde(alias = "max_output_chars")]
     pub max_output_chars: Option<usize>,
     pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct AISummaryArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
+    #[serde(alias = "top_n")]
     pub top_n: Option<usize>,
+    #[serde(alias = "max_output_chars")]
     pub max_output_chars: Option<usize>,
     pub etag: Option<String>,
+    #[serde(alias = "use_cache")]
     pub use_cache: Option<bool>,
+    #[serde(alias = "cache_ttl_ms")]
     pub cache_ttl_ms: Option<u64>,
     pub force: Option<bool>,
 }
@@ -115,6 +141,7 @@ pub struct RpcError {
 
 // =============== MCP-like Tool List ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ToolDescription {
     pub name: String,
     pub description: String,
@@ -124,6 +151,7 @@ pub struct ToolDescription {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ResourceDescription {
     pub name: String,
     pub uri: String,
@@ -157,7 +185,9 @@ pub struct PromptGetArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct AIRecommendArgs {
+    #[serde(alias = "project_path")]
     pub project_path: String,
     #[serde(default)]
     pub json: Option<serde_json::Value>,
@@ -1641,6 +1671,8 @@ fn handle_call(
             Ok(serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "serverInfo": {"name": "archlens-mcp", "version": env!("CARGO_PKG_VERSION")},
+                "rootUri": null,
+                "instructions": "ArchLens MCP server is ready.",
                 // Minimal capabilities object; clients will follow-up with tools/resources/prompts calls
                 "capabilities": {
                     "tools": {},
