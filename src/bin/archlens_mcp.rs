@@ -7,28 +7,33 @@ use futures_util::Stream;
 use axum::{routing::{get, post}, Router, response::sse::{Event, Sse}, extract::State, Json};
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
+use regex::Regex;
 
 // =============== Types ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AnalyzeArgs {
     pub project_path: String,
     pub deep: Option<bool>,
+    pub detail_level: Option<String>, // summary|standard|full
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExportArgs {
     pub project_path: String,
+    pub detail_level: Option<String>, // summary|standard|full
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructureArgs {
     pub project_path: String,
+    pub detail_level: Option<String>, // summary|standard|full
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DiagramArgs {
     pub project_path: String,
     pub diagram_type: Option<String>,
+    pub detail_level: Option<String>, // summary|standard|full
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,18 +98,111 @@ async fn sse_refresh(State(_): State<HttpState>) -> Sse<impl Stream<Item = Resul
     Sse::new(ReceiverStream::new(rx))
 }
 
+// Formatting limits
+const SUMMARY_LIMIT_CHARS: usize = 30_000;
+const MAX_OUTPUT_CHARS: usize = 1_000_000;
+
+fn clamp_text(s: &str, max_chars: usize) -> String {
+    if s.len() <= max_chars { return s.to_string(); }
+    let mut out = s[..max_chars].to_string();
+    out.push_str("\n... (truncated)");
+    out
+}
+
+fn strip_code_blocks(md: &str) -> String {
+    let re = Regex::new(r"(?s)```.*?```").ok();
+    let mut out = md.to_string();
+    if let Some(re) = re { out = re.replace_all(&out, "").to_string(); }
+    // compress blank lines
+    let re2 = Regex::new(r"\n{3,}").ok();
+    if let Some(re2) = re2 { out = re2.replace_all(&out, "\n\n").to_string(); }
+    out
+}
+
+fn level<'a>(opt: &'a Option<String>) -> &'a str {
+    match opt.as_deref() { Some("standard") => "standard", Some("full") => "full", _ => "summary" }
+}
+
+fn format_analysis_result(project_path: &str, ps: &stats::ProjectStats, detail_level: &str) -> String {
+    let mut out = String::new();
+    out.push_str("# 🔍 PROJECT ANALYSIS\n");
+    out.push_str(&format!("**Path:** {}\n", project_path));
+    out.push_str(&format!("- Files: {}\n", ps.total_files));
+    out.push_str(&format!("- Lines: {}\n", ps.total_lines));
+    // file types sorted desc
+    let mut types: Vec<(String, usize)> = ps.file_types.iter().map(|(k,v)|(k.clone(),*v)).collect();
+    types.sort_by(|a,b| b.1.cmp(&a.1));
+    let take = match detail_level { "full" => types.len(), "standard" => types.len().min(10), _ => types.len().min(5) };
+    if take>0 {
+        let list = types.into_iter().take(take).map(|(ext,c)| format!(".{}:{}", ext, c)).collect::<Vec<_>>().join(", ");
+        out.push_str(&format!("- Types: {}\n", list));
+    }
+    out
+}
+
+fn format_structure_result(project_path: &str, st: &stats::ProjectStructure, detail_level: &str) -> String {
+    let mut out = String::new();
+    out.push_str("# 📁 STRUCTURE\n");
+    out.push_str(&format!("**Path:** {}\n", project_path));
+    out.push_str(&format!("- Files: {}\n", st.total_files));
+    if !st.layers.is_empty() {
+        out.push_str(&format!("- Layers: {}\n", st.layers.join(", ")));
+    }
+    // file types top N
+    let mut types: Vec<(String, usize)> = st.file_types.iter().map(|(k,v)|(k.clone(),*v)).collect();
+    types.sort_by(|a,b| b.1.cmp(&a.1));
+    let take = match detail_level { "full" => types.len(), "standard" => types.len().min(10), _ => types.len().min(5) };
+    if take>0 {
+        let list = types.into_iter().take(take).map(|(ext,c)| format!(".{}:{}", ext, c)).collect::<Vec<_>>().join(", ");
+        out.push_str(&format!("- Types: {}\n", list));
+    }
+    if detail_level == "full" {
+        // show first 25 files
+        let files = st.files.iter().take(25).map(|f| format!("- `{}` ({}, {:.1}KB)", f.path, f.extension, (f.size as f64)/1024.0)).collect::<Vec<_>>().join("\n");
+        if !files.is_empty() { out.push_str("\n"); out.push_str(&files); }
+    }
+    out
+}
+
+fn format_export_markdown(md: String, detail_level: &str) -> String {
+    if detail_level == "full" {
+        return clamp_text(&md, MAX_OUTPUT_CHARS);
+    }
+    let stripped = strip_code_blocks(&md);
+    if detail_level == "standard" {
+        clamp_text(&stripped, SUMMARY_LIMIT_CHARS * 2)
+    } else {
+        clamp_text(&stripped, SUMMARY_LIMIT_CHARS)
+    }
+}
+
+fn format_diagram_text(mmd: String, project_path: &str, detail_level: &str) -> String {
+    let mut limit = 120_000usize;
+    if detail_level == "summary" { limit = 15_000; } else if detail_level == "standard" { limit = 40_000; }
+    let body = clamp_text(&mmd, limit);
+    format!("# 📊 DIAGRAM\nPath: {}\nType: mermaid\n\n```mermaid\n{}\n```", project_path, body)
+}
+
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let path = ensure_absolute_path(&args.project_path);
     match export::generate_ai_compact(path.to_string_lossy().as_ref()) {
-        Ok(md) => Ok(Json(serde_json::json!({"status":"ok","output": md}))),
-        Err(e) => Err(axum::http::StatusCode::BAD_REQUEST),
+        Ok(md) => {
+            let lv = level(&args.detail_level).to_string();
+            let txt = format_export_markdown(md, &lv);
+            Ok(Json(serde_json::json!({"status":"ok","output": txt})))
+        },
+        Err(_e) => Err(axum::http::StatusCode::BAD_REQUEST),
     }
 }
 
 async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let path = ensure_absolute_path(&args.project_path);
     match stats::get_project_structure(path.to_string_lossy().as_ref()) {
-        Ok(structure) => Ok(Json(serde_json::json!({"status":"ok","structure": structure}))),
+        Ok(structure) => {
+            let lv = level(&args.detail_level).to_string();
+            let text = format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
+            Ok(Json(serde_json::json!({"status":"ok","text": text})))
+        },
         Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
     }
 }
@@ -114,7 +212,11 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let kind = args.diagram_type.as_deref().unwrap_or("mermaid");
     if kind != "mermaid" { return Err(axum::http::StatusCode::BAD_REQUEST); }
     match diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()) {
-        Ok(mmd) => Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","diagram": mmd}))),
+        Ok(mmd) => {
+            let lv = level(&args.detail_level).to_string();
+            let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
+            Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
+        },
         Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
     }
 }
@@ -252,19 +354,22 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let args: ExportArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
                     let out = export::generate_ai_compact(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
-                    Ok(serde_json::json!({"content":[{"type":"text","text": out}]}))
+                    let txt = format_export_markdown(out, level(&args.detail_level));
+                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "structure.get" => {
                     let args: StructureArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
                     let st = stats::get_project_structure(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
-                    Ok(serde_json::json!({"content":[{"type":"text","text": serde_json::to_string_pretty(&st).unwrap()}]}))
+                    let txt = format_structure_result(path.to_string_lossy().as_ref(), &st, level(&args.detail_level));
+                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "graph.build" => {
                     let args: DiagramArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
                     let mmd = diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
-                    Ok(serde_json::json!({"content":[{"type":"text","text": format!("```mermaid\n{}\n```", mmd)}]}))
+                    let txt = format_diagram_text(mmd, path.to_string_lossy().as_ref(), level(&args.detail_level));
+                    Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
                 "analyze.project" => {
                     let args: AnalyzeArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -272,10 +377,14 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     if args.deep.unwrap_or(false) {
                         let res = cli::handlers::run_deep_pipeline(path.to_string_lossy().as_ref())
                             .map_err(|e| e.to_string())?;
-                        Ok(serde_json::json!({"content":[{"type":"text","text": serde_json::to_string_pretty(&res).unwrap_or_else(|_|"{}".into())}]}))
+                        let lv = level(&args.detail_level);
+                        let txt = clamp_text(&res, if lv=="full" { MAX_OUTPUT_CHARS } else if lv=="standard" { SUMMARY_LIMIT_CHARS * 2 } else { SUMMARY_LIMIT_CHARS });
+                        Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                     } else {
                         let s = stats::get_project_stats(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
-                        Ok(serde_json::json!({"content":[{"type":"text","text": serde_json::to_string_pretty(&s).unwrap()}]}))
+                        let lv = level(&args.detail_level);
+                        let txt = format_analysis_result(path.to_string_lossy().as_ref(), &s, lv);
+                        Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                     }
                 }
                 "arch.refresh" => {
