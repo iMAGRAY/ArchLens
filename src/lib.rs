@@ -16,11 +16,17 @@
 //! ## Usage
 //!
 //! ```rust
-//! use archlens::*;
+//! use archlens::{ensure_absolute_path, file_scanner::FileScanner, parser_ast::ParserAST, types::FileType};
+//! use std::path::Path;
 //!
-//! // Analyze a project
-//! let analyzer = commands::ArchLensAnalyzer::new();
-//! let result = analyzer.analyze_project("path/to/project");
+//! // Resolve project path
+//! let project_path = ensure_absolute_path(".");
+//!
+//! // Basic scan + parse single file example (regex fallback)
+//! let mut parser = ParserAST::new().unwrap();
+//! let content = "pub fn hello() { println!(\"hi\"); }";
+//! let elements = parser.parse_file(Path::new("src/lib.rs"), content, &FileType::Rust).unwrap();
+//! assert!(elements.iter().any(|e| matches!(e.element_type, archlens::parser_ast::ASTElementType::Function)));
 //! ```
 
 /// Core type definitions and data structures

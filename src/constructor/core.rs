@@ -15,10 +15,31 @@ use uuid::Uuid;
 ///
 /// ```rust
 /// use archlens::constructor::CapsuleConstructor;
+/// use archlens::parser_ast::{ASTElement, ASTElementType};
+/// use std::collections::HashMap;
 /// use std::path::PathBuf;
+/// use uuid::Uuid;
 ///
 /// let constructor = CapsuleConstructor::new();
-/// let capsules = constructor.create_capsules(&ast_elements, &PathBuf::from("src/main.rs"));
+/// let node = ASTElement {
+///     id: Uuid::new_v4(),
+///     name: "hello".into(),
+///     element_type: ASTElementType::Function,
+///     content: "pub fn hello() {}".into(),
+///     start_line: 1,
+///     end_line: 1,
+///     start_column: 0,
+///     end_column: 2,
+///     complexity: 1,
+///     visibility: "public".into(),
+///     parameters: vec![],
+///     return_type: None,
+///     children: vec![],
+///     parent_id: None,
+///     metadata: HashMap::new(),
+/// };
+/// let capsules = constructor.create_capsules(&[node], &PathBuf::from("src/main.rs"));
+/// assert!(capsules.is_ok());
 /// ```
 #[derive(Debug)]
 pub struct CapsuleConstructor {
@@ -59,9 +80,14 @@ impl CapsuleConstructor {
     ///
     /// ```rust
     /// # use archlens::constructor::CapsuleConstructor;
+    /// # use archlens::parser_ast::{ASTElement, ASTElementType};
+    /// # use std::collections::HashMap;
     /// # use std::path::PathBuf;
-    /// let constructor = CapsuleConstructor::new();
-    /// let capsules = constructor.create_capsules(&ast_elements, &PathBuf::from("src/lib.rs"))?;
+    /// # use uuid::Uuid;
+    /// # let constructor = CapsuleConstructor::new();
+    /// # let node = ASTElement { id: Uuid::new_v4(), name: "x".into(), element_type: ASTElementType::Function, content: "fn x() {}".into(), start_line: 1, end_line: 1, start_column: 0, end_column: 1, complexity: 1, visibility: "public".into(), parameters: vec![], return_type: None, children: vec![], parent_id: None, metadata: HashMap::new() };
+    /// let capsules = constructor.create_capsules(&[node], &PathBuf::from("src/lib.rs")).unwrap();
+    /// assert!(capsules.len() <= 1);
     /// ```
     pub fn create_capsules(
         &self,
