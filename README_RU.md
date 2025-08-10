@@ -534,7 +534,7 @@ focus_critical = false
   - STDIO (JSON‑RPC): `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
   - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`
 - detail_level: `summary` (по умолчанию) | `standard` | `full` — управляет подробностью и бюджетом токенов
-- Порт HTTP настраивается переменной: `ARCHLENS_MCP_PORT` (по умолчанию 5178)
+- Переменные окружения: `ARCHLENS_MCP_PORT` (порт HTTP, по умолчанию 5178), `ARCHLENS_TIMEOUT_MS` (таймаут запроса, по умолчанию 60000), `ARCHLENS_TEST_DELAY_MS` (искусственная задержка для тестов)
 
 Примеры
 

@@ -518,6 +518,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
   - STDIO (JSON‑RPC): methods `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
   - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`
 - detail_level: `summary` (default) | `standard` | `full` — controls verbosity and token budget
+- Env: `ARCHLENS_MCP_PORT` (HTTP port, default 5178), `ARCHLENS_TIMEOUT_MS` (per-request timeout, default 60000), `ARCHLENS_TEST_DELAY_MS` (artificial delay for tests)
 
 Examples
 
