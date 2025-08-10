@@ -23,6 +23,11 @@ exclude = [
 name = "archlens"
 path = "src/main.rs"
 
+# New MCP server binary (Rust)
+[[bin]]
+name = "archlens-mcp"
+path = "src/bin/archlens_mcp.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
@@ -50,6 +55,11 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 ignore = "0.4"
 tokio = { version = "1.0", features = ["full"] }
+# New deps for MCP server
+schemars = { version = "0.8", features = ["preserve_order"] }
+axum = { version = "0.7", features = ["macros", "json", "http1", "http2", "headers", "sse"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
