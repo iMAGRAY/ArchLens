@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::io::{Read, Write};
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
 use regex::Regex;
@@ -30,6 +31,9 @@ pub struct ExportArgs {
     pub sections: Option<Vec<String>>, // e.g., ["summary","problems_validated","cycles"] or exact headers
     pub top_n: Option<usize>,          // limit list items in sections
     pub etag: Option<String>,
+    pub use_cache: Option<bool>,       // default true
+    pub cache_ttl_ms: Option<u64>,
+    pub force: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -275,25 +279,50 @@ fn env_timeout_ms() -> u64 {
     std::env::var("ARCHLENS_TIMEOUT_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(60_000)
 }
 
+fn env_cache_ttl_ms() -> u64 {
+    std::env::var("ARCHLENS_CACHE_TTL_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(120_000)
+}
+
 fn env_test_delay_ms() -> Option<u64> {
     std::env::var("ARCHLENS_TEST_DELAY_MS").ok().and_then(|s| s.parse().ok())
 }
 
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let t0 = Instant::now();
-    let path = ensure_absolute_path(&args.project_path);
+    let abspath = ensure_absolute_path(&args.project_path);
     let lv = level(&args.detail_level).to_string();
+    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
+    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
+    let key = export_cache_key(&abspath.to_string_lossy(), &lv, &args.sections, args.top_n, args.max_output_chars);
+
+    if use_cache {
+        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
+            if args.etag.as_deref() == Some(&etag_cached) {
+                tracing::info!(target="archlens_mcp", action="export_ai_compact_cache", hit=true, not_modified=true);
+                return Ok(Json(serde_json::json!({"status":"not_modified","etag": etag_cached})));
+            } else {
+                tracing::info!(target="archlens_mcp", action="export_ai_compact_cache", hit=true, not_modified=false);
+                return Ok(Json(serde_json::json!({"status":"ok","etag": etag_cached, "output": output_cached})));
+            }
+        }
+    }
+
     let timeout = Duration::from_millis(env_timeout_ms());
     let delay = env_test_delay_ms();
+    let path_clone = abspath.clone();
+    let lv_clone = lv.clone();
+    let sections_clone = args.sections.clone();
+    let topn_clone = args.top_n;
+    let max_clone = args.max_output_chars;
     let handle = tokio::task::spawn_blocking(move || {
         if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
-        export::generate_ai_compact(path.to_string_lossy().as_ref())
+        export::generate_ai_compact(path_clone.to_string_lossy().as_ref()).map(|md| format_export_markdown_with_controls(md, &lv_clone, &sections_clone, topn_clone, max_clone))
     });
     let out = match tokio::time::timeout(timeout, handle).await {
         Ok(joined) => match joined {
-            Ok(Ok(md)) => {
-                let txt = format_export_markdown_with_controls(md, &lv, &args.sections, args.top_n, args.max_output_chars);
+            Ok(Ok(txt)) => {
                 let etag = content_etag(&txt);
+                if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
                 if args.etag.as_deref() == Some(&etag) {
                     Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
                 } else {
@@ -434,6 +463,43 @@ fn content_etag(s: &str) -> String {
     format!("{:016x}", h.finish())
 }
 
+fn cache_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("cache") }
+
+fn export_cache_key(path: &str, lv: &str, sections: &Option<Vec<String>>, top_n: Option<usize>, max_chars: Option<usize>) -> String {
+    let mut elems = vec![path.to_string(), lv.to_string(), format!("top_n={}", top_n.unwrap_or(0)), format!("max={}", max_chars.unwrap_or(0))];
+    if let Some(s) = sections {
+        let mut s2 = s.clone();
+        s2.sort();
+        elems.push(format!("sections={}", s2.join("|")));
+    }
+    let joined = elems.join("::");
+    let mut h = DefaultHasher::new();
+    joined.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn cache_get(key: &str, ttl_ms: u64) -> Option<(String, String)> {
+    let dir = cache_dir();
+    let p = dir.join(format!("{}.json", key));
+    let meta = fs::metadata(&p).ok()?;
+    let age = meta.modified().ok()?.elapsed().ok()?.as_millis() as u64;
+    if age > ttl_ms { return None; }
+    let mut f = fs::File::open(&p).ok()?;
+    let mut buf = String::new();
+    let _ = f.read_to_string(&mut buf).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&buf).ok()?;
+    let etag = v.get("etag")?.as_str()?.to_string();
+    let output = v.get("output")?.as_str()?.to_string();
+    Some((etag, output))
+}
+
+fn cache_put(key: &str, etag: &str, output: &str) {
+    let dir = cache_dir();
+    let _ = fs::create_dir_all(&dir);
+    let p = dir.join(format!("{}.json", key));
+    let _ = fs::write(p, serde_json::json!({"etag":etag,"output":output}).to_string());
+}
+
 fn presets_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("presets") }
 
 fn write_preset(name: &str, json: serde_json::Value) {
@@ -543,10 +609,26 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
             match name {
                 "export.ai_compact" => {
                     let args: ExportArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
-                    let path = ensure_absolute_path(args.project_path);
-                    let out = export::generate_ai_compact(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
+                    let abspath = ensure_absolute_path(args.project_path);
+                    let lv = level(&args.detail_level).to_string();
+                    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
+                    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
+                    let key = export_cache_key(&abspath.to_string_lossy(), &lv, &args.sections, args.top_n, args.max_output_chars);
+
+                    if use_cache {
+                        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
+                            if args.etag.as_deref() == Some(&etag_cached) {
+                                return Ok(serde_json::json!({"status":"not_modified","etag": etag_cached}));
+                            } else {
+                                return Ok(serde_json::json!({"status":"ok","etag": etag_cached, "content":[{"type":"text","text": output_cached}]}));
+                            }
+                        }
+                    }
+
+                    let out = export::generate_ai_compact(abspath.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
                     let txt = format_export_markdown_with_controls(out, level(&args.detail_level), &args.sections, args.top_n, args.max_output_chars);
                     let etag = content_etag(&txt);
+                    if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
                     if args.etag.as_deref() == Some(&etag) {
                         Ok(serde_json::json!({"status":"not_modified","etag": etag}))
                     } else {
