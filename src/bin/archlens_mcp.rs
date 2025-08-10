@@ -211,9 +211,12 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     let path = ensure_absolute_path(&args.project_path);
     let kind = args.diagram_type.as_deref().unwrap_or("mermaid");
     if kind != "mermaid" { return Err(axum::http::StatusCode::BAD_REQUEST); }
-    match diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()) {
+    let lv = level(&args.detail_level).to_string();
+    // Prefer full graph-based mermaid; fallback to simple import-based
+    let try_graph = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
+        .or_else(|_| diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()));
+    match try_graph {
         Ok(mmd) => {
-            let lv = level(&args.detail_level).to_string();
             let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
             Ok(Json(serde_json::json!({"status":"ok","diagram_type":"mermaid","text": text})))
         },
@@ -367,7 +370,9 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                 "graph.build" => {
                     let args: DiagramArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
-                    let mmd = diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
+                    // Prefer graph-based; fallback to simple
+                    let mmd = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
+                        .or_else(|_| diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref()))?;
                     let txt = format_diagram_text(mmd, path.to_string_lossy().as_ref(), level(&args.detail_level));
                     Ok(serde_json::json!({"content":[{"type":"text","text": txt}]}))
                 }
