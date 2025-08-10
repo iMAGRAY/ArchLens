@@ -53,6 +53,17 @@ pub struct DiagramArgs {
     pub etag: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AISummaryArgs {
+    pub project_path: String,
+    pub top_n: Option<usize>,
+    pub max_output_chars: Option<usize>,
+    pub etag: Option<String>,
+    pub use_cache: Option<bool>,
+    pub cache_ttl_ms: Option<u64>,
+    pub force: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RpcParams {
@@ -337,6 +348,55 @@ async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Va
     out
 }
 
+async fn post_export_summary(Json(args): Json<AISummaryArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let t0 = Instant::now();
+    let abspath = ensure_absolute_path(&args.project_path);
+    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
+    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
+    let key = export_cache_key(&abspath.to_string_lossy(), "json_summary", &Some(vec!["__json_summary__".into()]), args.top_n, args.max_output_chars);
+    if use_cache {
+        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
+            if args.etag.as_deref() == Some(&etag_cached) {
+                return Ok(Json(serde_json::json!({"status":"not_modified","etag": etag_cached})));
+            } else {
+                return Ok(Json(serde_json::json!({"status":"ok","etag": etag_cached, "json": serde_json::from_str::<serde_json::Value>(&output_cached).unwrap_or(serde_json::json!({})) })));
+            }
+        }
+    }
+    let timeout = Duration::from_millis(env_timeout_ms());
+    let delay = env_test_delay_ms();
+    let path_clone = abspath.clone();
+    let topn = args.top_n;
+    let handle = tokio::task::spawn_blocking(move || {
+        if let Some(ms) = delay { thread::sleep(Duration::from_millis(ms)); }
+        let graph = build_graph_for_path(path_clone.to_string_lossy().as_ref())?;
+        let exporter = archlens::exporter::Exporter::new();
+        let mut json = exporter.export_to_ai_summary_json(&graph).map_err(|e| e.to_string())?;
+        json = trim_ai_summary_json(json, topn);
+        let txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
+        Ok::<serde_json::Value, String>(json)
+    });
+    let out = match tokio::time::timeout(timeout, handle).await {
+        Ok(joined) => match joined {
+            Ok(Ok(val)) => {
+                let txt = serde_json::to_string_pretty(&val).unwrap_or("{}".into());
+                let etag = content_etag(&txt);
+                if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
+                if args.etag.as_deref() == Some(&etag) {
+                    Ok(Json(serde_json::json!({"status":"not_modified","etag": etag})))
+                } else {
+                    let txt = clamp_text_with_limit(&txt, args.max_output_chars);
+                    Ok(Json(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)})))
+                }
+            },
+            _ => Err(axum::http::StatusCode::BAD_REQUEST)
+        },
+        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT)
+    };
+    tracing::info!(target: "archlens_mcp", action = "export_ai_summary_json", ms = %t0.elapsed().as_millis());
+    out
+}
+
 async fn post_structure(Json(args): Json<StructureArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let t0 = Instant::now();
     let path = ensure_absolute_path(&args.project_path);
@@ -427,6 +487,7 @@ fn build_http_router() -> Router {
     Router::new()
         .route("/sse/refresh", get(sse_refresh))
         .route("/export/ai_compact", post(post_export))
+        .route("/export/ai_summary_json", post(post_export_summary))
         .route("/structure/get", post(post_structure))
         .route("/diagram/generate", post(post_diagram))
         .route("/schemas/list", get(get_schemas))
@@ -451,6 +512,7 @@ fn tool_list_schema() -> Vec<ToolDescription> {
     let export_schema = schemars::schema_for!(ExportArgs);
     let structure_schema = schemars::schema_for!(StructureArgs);
     let diagram_schema = schemars::schema_for!(DiagramArgs);
+    let ai_summary_schema = schemars::schema_for!(AISummaryArgs);
 
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let schemas_dir = root.join("out").join("schemas");
@@ -464,6 +526,7 @@ fn tool_list_schema() -> Vec<ToolDescription> {
         ToolDescription { name: "arch.refresh".into(), description: "Refresh analysis context (noop placeholder)".into(), input_schema: serde_json::json!({"type":"object"}), schema_uri: None },
         ToolDescription { name: "graph.build".into(), description: "Build architecture diagram (mermaid)".into(), input_schema: serde_json::to_value(diagram_schema.schema).unwrap(), schema_uri: to_uri("diagram_args") },
         ToolDescription { name: "export.ai_compact".into(), description: "Export AI compact analysis".into(), input_schema: serde_json::to_value(export_schema.schema).unwrap(), schema_uri: to_uri("export_args") },
+        ToolDescription { name: "export.ai_summary_json".into(), description: "Export minimal structured JSON summary for AI (facts only).".into(), input_schema: serde_json::to_value(ai_summary_schema.schema).unwrap(), schema_uri: to_uri("ai_summary_args") },
         ToolDescription { name: "structure.get".into(), description: "Get project structure".into(), input_schema: serde_json::to_value(structure_schema.schema).unwrap(), schema_uri: to_uri("structure_args") },
         ToolDescription { name: "analyze.project".into(), description: "Analyze project (shallow or deep)".into(), input_schema: serde_json::to_value(analyze_schema.schema).unwrap(), schema_uri: to_uri("analyze_args") },
     ]
@@ -519,6 +582,51 @@ fn write_preset(name: &str, json: serde_json::Value) {
     let _ = fs::create_dir_all(&dir);
     let p = dir.join(format!("{}.json", name));
     let _ = fs::write(p, serde_json::to_vec_pretty(&json).unwrap());
+}
+
+fn build_graph_for_path(project_path: &str) -> Result<archlens::types::CapsuleGraph, String> {
+    use archlens::file_scanner::FileScanner;
+    use archlens::parser_ast::ParserAST;
+    use archlens::capsule_constructor::CapsuleConstructor;
+    use archlens::capsule_graph_builder::CapsuleGraphBuilder;
+    use archlens::validator_optimizer::ValidatorOptimizer;
+    use archlens::types::{Capsule, Result as ArchResult};
+    use std::path::Path;
+
+    let scanner = FileScanner::new(
+        vec!["**/*.rs".into(), "**/*.ts".into(), "**/*.js".into(), "**/*.py".into(), "**/*.java".into(), "**/*.go".into(), "**/*.cpp".into(), "**/*.c".into()],
+        vec!["**/target/**".into(), "**/node_modules/**".into(), "**/.git/**".into(), "**/dist/**".into(), "**/build/**".into()],
+        Some(8),
+    ).map_err(|e| e.to_string())?;
+    let files = scanner.scan_files(Path::new(project_path)).map_err(|e| e.to_string())?;
+
+    let mut parser = ParserAST::new().map_err(|e| e.to_string())?;
+    let constructor = CapsuleConstructor::new();
+    let mut capsules: Vec<Capsule> = Vec::new();
+    for file in &files {
+        if let Ok(content) = std::fs::read_to_string(&file.path) {
+            if let Ok(nodes) = parser.parse_file(&file.path, &content, &file.file_type) {
+                let mut caps = constructor.create_capsules(&nodes, &file.path.clone()).map_err(|e| e.to_string())?;
+                capsules.append(&mut caps);
+            }
+        }
+    }
+    if capsules.is_empty() { return Err("No capsules".into()); }
+    let mut builder = CapsuleGraphBuilder::new();
+    let graph = builder.build_graph(&capsules).map_err(|e| e.to_string())?;
+    let validator = ValidatorOptimizer::new();
+    let graph = validator.validate_and_optimize(&graph).map_err(|e| e.to_string())?;
+    Ok(graph)
+}
+
+fn trim_ai_summary_json(mut v: serde_json::Value, top_n: Option<usize>) -> serde_json::Value {
+    let n = top_n.unwrap_or(0);
+    if n == 0 { return v; }
+    if let Some(arr) = v.get_mut("problems_validated").and_then(|x| x.as_array_mut()) { if arr.len() > n { arr.truncate(n); } }
+    if let Some(arr) = v.get_mut("cycles_top").and_then(|x| x.as_array_mut()) { if arr.len() > n { arr.truncate(n); } }
+    if let Some(arr) = v.get_mut("top_coupling").and_then(|x| x.as_array_mut()) { if arr.len() > n { arr.truncate(n); } }
+    if let Some(arr) = v.get_mut("top_complexity_components").and_then(|x| x.as_array_mut()) { if arr.len() > n { arr.truncate(n); } }
+    v
 }
 
 fn list_schema_resources() -> Vec<ResourceDescription> {
@@ -653,6 +761,35 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                         Ok(serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}))
                     }
                 }
+                "export.ai_summary_json" => {
+                    let args: AISummaryArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
+                    let abspath = ensure_absolute_path(args.project_path);
+                    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
+                    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
+                    let key = export_cache_key(&abspath.to_string_lossy(), "json_summary", &Some(vec!["__json_summary__".into()]), args.top_n, args.max_output_chars);
+                    if use_cache {
+                        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
+                            if args.etag.as_deref() == Some(&etag_cached) {
+                                return Ok(serde_json::json!({"status":"not_modified","etag": etag_cached}));
+                            } else {
+                                return Ok(serde_json::json!({"status":"ok","etag": etag_cached, "content":[{"type":"text","text": output_cached}]}));
+                            }
+                        }
+                    }
+                    let graph = build_graph_for_path(abspath.to_string_lossy().as_ref())?;
+                    let exporter = archlens::exporter::Exporter::new();
+                    let mut json = exporter.export_to_ai_summary_json(&graph).map_err(|e| e.to_string())?;
+                    json = trim_ai_summary_json(json, args.top_n);
+                    let txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
+                    let etag = content_etag(&txt);
+                    if args.use_cache.unwrap_or(true) { cache_put(&key, &etag, &txt); }
+                    if args.etag.as_deref() == Some(&etag) {
+                        Ok(serde_json::json!({"status":"not_modified","etag": etag}))
+                    } else {
+                        let txt = clamp_text_with_limit(&txt, args.max_output_chars);
+                        Ok(serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(json)}))
+                    }
+                }
                 "structure.get" => {
                     let args: StructureArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
@@ -736,6 +873,7 @@ async fn main() -> anyhow::Result<()> {
     write_schema("export_args", schemars::schema_for!(ExportArgs));
     write_schema("structure_args", schemars::schema_for!(StructureArgs));
     write_schema("diagram_args", schemars::schema_for!(DiagramArgs));
+    write_schema("ai_summary_args", schemars::schema_for!(AISummaryArgs));
     write_schema("resource_read_args", schemars::schema_for!(ResourceReadArgs));
     write_schema("prompt_get_args", schemars::schema_for!(PromptGetArgs));
     // Output models
