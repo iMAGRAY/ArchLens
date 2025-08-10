@@ -33,6 +33,7 @@ use regex::Regex;
 #[serde(rename_all = "camelCase")]
 pub struct AnalyzeArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     pub deep: Option<bool>,
     #[serde(alias = "detail_level")] // summary|standard|full
@@ -45,6 +46,7 @@ pub struct AnalyzeArgs {
 #[serde(rename_all = "camelCase")]
 pub struct ExportArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     #[serde(alias = "detail_level")] // summary|standard|full
     pub detail_level: Option<String>,
@@ -65,6 +67,7 @@ pub struct ExportArgs {
 #[serde(rename_all = "camelCase")]
 pub struct StructureArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     #[serde(alias = "detail_level")] // summary|standard|full
     pub detail_level: Option<String>,
@@ -77,6 +80,7 @@ pub struct StructureArgs {
 #[serde(rename_all = "camelCase")]
 pub struct DiagramArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     #[serde(alias = "diagram_type")]
     pub diagram_type: Option<String>,
@@ -91,6 +95,7 @@ pub struct DiagramArgs {
 #[serde(rename_all = "camelCase")]
 pub struct AISummaryArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     #[serde(alias = "top_n")]
     pub top_n: Option<usize>,
@@ -188,6 +193,7 @@ pub struct PromptGetArgs {
 #[serde(rename_all = "camelCase")]
 pub struct AIRecommendArgs {
     #[serde(alias = "project_path")]
+    #[serde(default = "default_project_path")]
     pub project_path: String,
     #[serde(default)]
     pub json: Option<serde_json::Value>,
@@ -2322,3 +2328,5 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 }
+
+fn default_project_path() -> String { ".".to_string() }

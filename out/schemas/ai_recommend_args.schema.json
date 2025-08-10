@@ -2,11 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AIRecommendArgs",
   "type": "object",
-  "required": [
-    "projectPath"
-  ],
   "properties": {
     "projectPath": {
+      "default": ".",
       "type": "string"
     },
     "json": {
