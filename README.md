@@ -564,3 +564,53 @@ Best-practice flow for AI agents:
   }
 }
 ``` 
+
+## 🧪 AI Recipes
+
+- Health Check (facts-only, minimal tokens)
+  - HTTP:
+    ```bash
+    # 1) Get structured facts
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' \
+      -d '{"project_path":".","top_n":5,"max_output_chars":20000}' | jq > summary.json
+
+    # 2) Ask for next best calls
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json summary.json)}" | jq
+    ```
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_summary_json","arguments":{"project_path":".","top_n":5}}}
+    {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai.recommend","arguments":{"project_path":".","json":<paste json here>}}}
+    ```
+
+- Cycles investigation
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"cycles\"}" | jq
+    # If cycles present → get graph
+    curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"summary"}'
+    ```
+
+- Refactor plan (high-severity problems)
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"plan\"}" | jq
+    # Then use prompt 'ai.refactor.plan' on the client side with the compact/problem sections as context
+    ```
+
+- Coupling audit (hubs & cycles)
+  - STDIO (compact, section-targeted):
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["cycles","top_coupling"],"top_n":10,"max_output_chars":18000,"use_cache":true}}}
+    ```
+
+- Complexity hotspots
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["top_complexity_components"],"top_n":10,"max_output_chars":16000}}}
+    ``` 

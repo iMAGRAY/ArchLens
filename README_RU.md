@@ -577,3 +577,53 @@ curl -s localhost:5178/schemas/list | jq
   }
 }
 ``` 
+
+## 🧪 AI Рецепты
+
+- Health Check (минимум токенов, только факты)
+  - HTTP:
+    ```bash
+    # 1) Получить структурированные факты
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' \
+      -d '{"project_path":".","top_n":5,"max_output_chars":20000}' | jq > summary.json
+
+    # 2) Запросить следующие оптимальные вызовы
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json summary.json)}" | jq
+    ```
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_summary_json","arguments":{"project_path":".","top_n":5}}}
+    {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai.recommend","arguments":{"project_path":".","json":<вставьте JSON здесь>}}}
+    ```
+
+- Исследование циклов
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"cycles\"}" | jq
+    # Если есть циклы → получить граф
+    curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"summary"}'
+    ```
+
+- План рефакторинга (при High‑severity проблемах)
+  - HTTP:
+    ```bash
+    curl -s -X POST localhost:5178/export/ai_summary_json -H 'content-type: application/json' -d '{"project_path":"."}' | jq > sum.json
+    curl -s -X POST localhost:5178/ai/recommend -H 'content-type: application/json' \
+      -d "{\"project_path\":\".\",\"json\":$(jq -c .json sum.json),\"focus\":\"plan\"}" | jq
+    # Затем используйте prompt 'ai.refactor.plan' на стороне клиента с секциями compact/problems как контекст
+    ```
+
+- Аудит связанности (хабы и циклы)
+  - STDIO (таргетированные секции):
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["cycles","top_coupling"],"top_n":10,"max_output_chars":18000,"use_cache":true}}}
+    ```
+
+- Горячие точки сложности
+  - STDIO:
+    ```json
+    {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary","sections":["top_complexity_components"],"top_n":10,"max_output_chars":16000}}}
+    ``` 
