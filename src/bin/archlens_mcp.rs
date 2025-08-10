@@ -577,6 +577,46 @@ fn content_etag(s: &str) -> String {
 
 fn cache_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("cache") }
 
+fn env_cache_max_entries() -> Option<usize> {
+    std::env::var("ARCHLENS_CACHE_MAX_ENTRIES").ok().and_then(|s| s.parse().ok()).filter(|v| *v > 0)
+}
+fn env_cache_max_bytes() -> Option<u64> {
+    std::env::var("ARCHLENS_CACHE_MAX_BYTES").ok().and_then(|s| s.parse().ok()).filter(|v| *v > 0)
+}
+
+fn cache_trim_lru(dir: &Path, max_entries: Option<usize>, max_bytes: Option<u64>) {
+    if max_entries.is_none() && max_bytes.is_none() { return; }
+    let rd = match fs::read_dir(dir) { Ok(rd) => rd, Err(_) => return };
+    let mut files: Vec<(PathBuf, u64, u64)> = Vec::new(); // (path, mtime_sec, size)
+    for ent in rd.flatten() {
+        let p = ent.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+        if let Ok(meta) = ent.metadata() {
+            if meta.is_file() {
+                let size = meta.len();
+                let mtime = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+                files.push((p, mtime, size));
+            }
+        }
+    }
+    if files.is_empty() { return; }
+    // Sort by mtime asc (oldest first)
+    files.sort_by_key(|(_, m, _)| *m);
+    let mut total_bytes: u64 = files.iter().map(|(_,_,s)| *s).sum();
+    let mut total_entries: usize = files.len();
+    let target_entries = max_entries.unwrap_or(usize::MAX);
+    let target_bytes = max_bytes.unwrap_or(u64::MAX);
+    let mut i = 0usize;
+    while (total_entries > target_entries) || (total_bytes > target_bytes) {
+        if i >= files.len() { break; }
+        let (p, _m, sz) = &files[i];
+        let _ = fs::remove_file(p);
+        total_entries = total_entries.saturating_sub(1);
+        total_bytes = total_bytes.saturating_sub(*sz);
+        i += 1;
+    }
+}
+
 // Project content fingerprint for cache invalidation
 fn git_head_and_dirty(path: &Path) -> Option<String> {
     let output = Command::new("git")
@@ -689,7 +729,9 @@ fn cache_put(key: &str, etag: &str, output: &str) {
     let dir = cache_dir();
     let _ = fs::create_dir_all(&dir);
     let p = dir.join(format!("{}.json", key));
-    let _ = fs::write(p, serde_json::json!({"etag":etag,"output":output}).to_string());
+    let _ = fs::write(&p, serde_json::json!({"etag":etag,"output":output}).to_string());
+    // LRU eviction
+    cache_trim_lru(&dir, env_cache_max_entries(), env_cache_max_bytes());
 }
 
 fn presets_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("presets") }
@@ -990,6 +1032,46 @@ mod tests {
     }
 
     #[test]
+    fn recommend_layer_imbalance_triggers_layers_section() {
+        let mock = json!({
+            "summary": {"components": 10, "layers": [
+                {"name":"Core","count":6}, {"name":"Infra","count":4}
+            ], "complexity_avg": 3.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let recs = res.get("recommendations").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let mut has_layers = false;
+        for r in recs {
+            if r.get("tool").and_then(|t| t.as_str()) == Some("export.ai_compact") {
+                if let Some(args) = r.get("arguments").and_then(|a| a.as_object()) {
+                    if let Some(sections) = args.get("sections").and_then(|s| s.as_array()) {
+                        if sections.iter().any(|s| s.as_str() == Some("layers")) { has_layers = true; break; }
+                    }
+                }
+            }
+        }
+        assert!(has_layers, "expected layers section recommendation when imbalance >= threshold");
+    }
+
+    #[test]
+    fn recommend_prompt_refactor_when_many_high_severity_categories() {
+        let mock = json!({
+            "summary": {"components": 5, "layers": [], "complexity_avg": 5.0, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": [
+                {"category":"complexity","count":3,"severity":{"H":1,"M":0,"L":0}},
+                {"category":"coupling","count":2,"severity":{"H":1,"M":0,"L":0}}
+            ]
+        });
+        let res = compute_recommendations(".", Some(&mock), None);
+        let recs = res.get("recommendations").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let has_prompt = recs.iter().any(|r| r.get("prompt").and_then(|p| p.as_str()) == Some("ai.refactor.plan"));
+        assert!(has_prompt, "expected ai.refactor.plan prompt when multiple high-severity categories");
+    }
+
+    #[test]
     fn cache_key_changes_on_fs_change() {
         let dir = PathBuf::from("out/test_cache_tmp");
         let _ = fs::remove_dir_all(&dir);
@@ -1002,6 +1084,42 @@ mod tests {
         fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
         let k2 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
         assert_ne!(k1, k2, "cache key must change when project content changes");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cache_lru_trims_to_max_entries() {
+        let dir = PathBuf::from("out/test_cache_lru_entries");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // Create 3 files
+        for i in 0..3 {
+            let p = dir.join(format!("{}.json", i));
+            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "x".repeat(10))).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        super::cache_trim_lru(&dir, Some(2), None);
+        let count = fs::read_dir(&dir).unwrap().flatten().count();
+        assert!(count <= 2, "LRU should trim to 2 entries or fewer");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cache_lru_trims_to_max_bytes() {
+        let dir = PathBuf::from("out/test_cache_lru_bytes");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // Create files ~30B each
+        for i in 0..4 {
+            let p = dir.join(format!("{}.json", i));
+            fs::write(&p, format!("{{\"etag\":\"e{}\",\"output\":\"{}\"}}", i, "y".repeat(30))).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        // 4*~30B ≈ 120B; trim to <= 70B
+        super::cache_trim_lru(&dir, None, Some(70));
+        let mut total: u64 = 0;
+        for ent in fs::read_dir(&dir).unwrap().flatten() { total += ent.metadata().unwrap().len(); }
+        assert!(total <= 80, "LRU should trim total bytes to the target");
         let _ = fs::remove_dir_all(&dir);
     }
 }

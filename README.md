@@ -520,6 +520,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - detail_level: `summary` (default) | `standard` | `full` — controls verbosity and token budget
 - Env: `ARCHLENS_MCP_PORT` (HTTP port, default 5178), `ARCHLENS_TIMEOUT_MS` (per-request timeout, default 60000), `ARCHLENS_TEST_DELAY_MS` (artificial delay for tests), `ARCHLENS_CACHE_TTL_MS` (filesystem cache TTL, default 120000), thresholds for AI recommendations: `ARCHLENS_TH_COMPLEXITY_AVG` (default 8.0), `ARCHLENS_TH_COUPLING_INDEX` (0.7), `ARCHLENS_TH_COHESION_INDEX` (0.3), `ARCHLENS_TH_LAYER_IMBALANCE_PCT` (60), `ARCHLENS_TH_HIGH_SEV_CATS` (2)
 - Cache invalidation: cache keys now include a project fingerprint: `git rev-parse HEAD` (+ `-dirty` if workspace has uncommitted changes), or a fast FS fingerprint (file count, total bytes, latest mtime) when git is unavailable.
+- Cache LRU (optional): `ARCHLENS_CACHE_MAX_ENTRIES` (limit number of cache files), `ARCHLENS_CACHE_MAX_BYTES` (limit total cache size in bytes). Older entries are evicted first.
 
 Examples
 
