@@ -479,7 +479,10 @@ async fn get_presets() -> Result<Json<serde_json::Value>, axum::http::StatusCode
 }
 
 async fn get_recommendations(Json(payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let result = compute_recommendations(".", payload.get("project_path"), payload.get("focus").and_then(|v| v.as_str()));
+    let project_path = payload.get("project_path").and_then(|v| v.as_str()).unwrap_or(".");
+    let json_opt = payload.get("json");
+    let focus_opt = payload.get("focus").and_then(|v| v.as_str());
+    let result = compute_recommendations(project_path, json_opt, focus_opt);
     Ok(Json(result))
 }
 
