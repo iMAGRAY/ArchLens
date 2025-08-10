@@ -154,7 +154,7 @@ impl CodeSmellDetector {
                 if !matches.is_empty() {
                     smells.push(CodeSmell {
                         smell_type: smell_type.clone(),
-                        severity: rule.severity.clone(),
+                        severity: rule.severity,
                         description: rule.description.clone(),
                         suggestion: rule.suggestion.clone(),
                         location: None,
@@ -184,7 +184,7 @@ impl CodeSmellDetector {
             if lines_after > threshold {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::LongMethod,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!(
                         "Функция '{}' слишком длинная ({} строк)",
                         fn_name, lines_after
@@ -221,7 +221,7 @@ impl CodeSmellDetector {
             if param_count > threshold {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::LongParameterList,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!(
                         "Функция '{}' имеет слишком много параметров ({})",
                         fn_name, param_count
@@ -255,7 +255,7 @@ impl CodeSmellDetector {
                 if impl_lines > threshold {
                     smells.push(CodeSmell {
                         smell_type: CodeSmellType::LargeClass,
-                        severity: rule.severity.clone(),
+                        severity: rule.severity,
                         description: format!(
                             "Структура '{}' слишком большая ({} строк)",
                             struct_name, impl_lines
@@ -291,7 +291,7 @@ impl CodeSmellDetector {
             if positions.len() > 1 {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::DuplicatedCode,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Дублированный код найден в строках: {:?}", positions),
                     suggestion: "Выделите повторяющийся код в отдельную функцию".to_string(),
                     location: Some(format!("Строки: {:?}", positions)),
@@ -325,7 +325,7 @@ impl CodeSmellDetector {
                 // Только объявление
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::DeadCode,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Функция '{}' не используется", fn_name),
                     suggestion: format!(
                         "Удалите неиспользуемую функцию '{}' или добавьте её использование",
@@ -348,7 +348,7 @@ impl CodeSmellDetector {
             if line.len() > threshold {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::LongLineLength,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Слишком длинная строка ({} символов)", line.len()),
                     suggestion: "Разбейте длинную строку на несколько коротких".to_string(),
                     location: Some(format!("Строка: {}", i + 1)),
@@ -381,7 +381,7 @@ impl CodeSmellDetector {
             if nesting_level > threshold as i32 {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::DeepNesting,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Глубокая вложенность ({} уровней)", nesting_level),
                     suggestion: "Выделите вложенную логику в отдельные функции".to_string(),
                     location: Some(format!("Строка: {}", i + 1)),
@@ -402,7 +402,7 @@ impl CodeSmellDetector {
             if number != "0" && number != "1" && number != "100" {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::MagicNumbers,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Магическое число: {}", number),
                     suggestion: format!("Замените число {} на именованную константу", number),
                     location: None,
@@ -425,7 +425,7 @@ impl CodeSmellDetector {
         for _cap in empty_catch_pattern.captures_iter(content) {
             smells.push(CodeSmell {
                 smell_type: CodeSmellType::EmptyExceptionHandling,
-                severity: rule.severity.clone(),
+                severity: rule.severity,
                 description: "Пустой блок обработки исключений".to_string(),
                 suggestion: "Добавьте логирование или обработку исключения".to_string(),
                 location: None,
@@ -449,7 +449,7 @@ impl CodeSmellDetector {
         if total_lines > 0.0 && comment_lines / total_lines > threshold {
             smells.push(CodeSmell {
                 smell_type: CodeSmellType::TooManyComments,
-                severity: rule.severity.clone(),
+                severity: rule.severity,
                 description: format!(
                     "Слишком много комментариев ({:.1}%)",
                     (comment_lines / total_lines) * 100.0
@@ -477,7 +477,7 @@ impl CodeSmellDetector {
         if total_lines > 50.0 && comment_lines / total_lines < threshold {
             smells.push(CodeSmell {
                 smell_type: CodeSmellType::TooFewComments,
-                severity: rule.severity.clone(),
+                severity: rule.severity,
                 description: format!(
                     "Слишком мало комментариев ({:.1}%)",
                     (comment_lines / total_lines) * 100.0
@@ -503,7 +503,7 @@ impl CodeSmellDetector {
             {
                 smells.push(CodeSmell {
                     smell_type: CodeSmellType::HardcodedValues,
-                    severity: rule.severity.clone(),
+                    severity: rule.severity,
                     description: format!("Жестко закодированное значение: {}", value),
                     suggestion: "Вынесите значение в конфигурационный файл".to_string(),
                     location: None,

@@ -53,3 +53,7 @@ impl NamingValidator {
         name.chars().any(|c| c.is_uppercase()) && name.chars().any(|c| c == '_')
     }
 }
+
+impl Default for NamingValidator {
+    fn default() -> Self { Self::new() }
+}

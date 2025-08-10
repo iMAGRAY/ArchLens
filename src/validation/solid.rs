@@ -29,19 +29,16 @@ impl SolidAnalyzer {
     pub fn analyze(&self, capsule: &Capsule) -> Result<Vec<AnalysisWarning>> {
         let mut warnings = Vec::new();
 
-        match self.principle {
-            SolidPrinciple::SingleResponsibility => {
-                if capsule.complexity > 15 {
-                    warnings.push(AnalysisWarning {
-                        level: Priority::Medium,
-                        message: format!("Possible SRP violation in {}", capsule.name),
-                        category: "solid".to_string(),
-                        capsule_id: Some(capsule.id),
-                        suggestion: Some("Consider splitting responsibilities".to_string()),
-                    });
-                }
+        if let SolidPrinciple::SingleResponsibility = self.principle {
+            if capsule.complexity > 15 {
+                warnings.push(AnalysisWarning {
+                    level: Priority::Medium,
+                    message: format!("Possible SRP violation in {}", capsule.name),
+                    category: "solid".to_string(),
+                    capsule_id: Some(capsule.id),
+                    suggestion: Some("Consider splitting responsibilities".to_string()),
+                });
             }
-            _ => {} // Other principles simplified
         }
 
         Ok(warnings)

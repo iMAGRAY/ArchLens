@@ -488,7 +488,7 @@ impl Exporter {
         if compact.ends_with("Heuristic)\n") {
             compact.push_str("- None\n");
         }
-        compact.push_str("\n");
+        compact.push('\n');
 
         // Проблемы по валидаторам (агрегированно)
         if let Some(validated) = self.build_validated_problems_section(graph) {
@@ -558,9 +558,7 @@ impl Exporter {
             for w in &cap.warnings {
                 let cat = w.category.clone();
                 *category_counts.entry(cat.clone()).or_insert(0) += 1;
-                let entry = category_components
-                    .entry(cat.clone())
-                    .or_insert_with(HashMap::new);
+                let entry = category_components.entry(cat.clone()).or_default();
                 *entry.entry(*id).or_insert(0) += 1;
                 let sev = category_severity.entry(cat.clone()).or_insert((0, 0, 0));
                 match w.level {
@@ -569,7 +567,7 @@ impl Exporter {
                     Priority::Low => sev.2 += 1,
                     _ => {}
                 }
-                if category_suggestion.get(&cat).is_none() {
+                if !category_suggestion.contains_key(&cat) {
                     if let Some(sug) = &w.suggestion {
                         if !sug.is_empty() {
                             category_suggestion.insert(cat.clone(), sug.clone());
@@ -666,9 +664,7 @@ impl Exporter {
             for w in &cap.warnings {
                 let cat = w.category.clone();
                 *category_counts.entry(cat.clone()).or_insert(0) += 1;
-                let entry = category_components
-                    .entry(cat.clone())
-                    .or_insert_with(HashMap::new);
+                let entry = category_components.entry(cat.clone()).or_default();
                 *entry.entry(*id).or_insert(0) += 1;
                 let sev = category_severity.entry(cat.clone()).or_insert((0, 0, 0));
                 match w.level {
@@ -677,7 +673,7 @@ impl Exporter {
                     Priority::Low => sev.2 += 1,
                     _ => {}
                 }
-                if category_suggestion.get(&cat).is_none() {
+                if !category_suggestion.contains_key(&cat) {
                     if let Some(sug) = &w.suggestion {
                         if !sug.is_empty() {
                             category_suggestion.insert(cat.clone(), sug.clone());
@@ -724,28 +720,26 @@ impl Exporter {
                         cat, cnt, sev_str, sug
                     ));
                 }
+            } else if sug.is_empty() {
+                out.push_str(&format!(
+                    "- {}: {} [{}] (top: {})\n",
+                    cat,
+                    cnt,
+                    sev_str,
+                    top_names.join(", ")
+                ));
             } else {
-                if sug.is_empty() {
-                    out.push_str(&format!(
-                        "- {}: {} [{}] (top: {})\n",
-                        cat,
-                        cnt,
-                        sev_str,
-                        top_names.join(", ")
-                    ));
-                } else {
-                    out.push_str(&format!(
-                        "- {}: {} [{}] (top: {}; hint: {})\n",
-                        cat,
-                        cnt,
-                        sev_str,
-                        top_names.join(", "),
-                        sug
-                    ));
-                }
+                out.push_str(&format!(
+                    "- {}: {} [{}] (top: {}; hint: {})\n",
+                    cat,
+                    cnt,
+                    sev_str,
+                    top_names.join(", "),
+                    sug
+                ));
             }
         }
-        out.push_str("\n");
+        out.push('\n');
         Some(out)
     }
 
@@ -776,7 +770,7 @@ impl Exporter {
                 s.push_str(&format!("- {}\n", path));
             }
         }
-        s.push_str("\n");
+        s.push('\n');
         Some(s)
     }
 
@@ -801,7 +795,7 @@ impl Exporter {
                 s.push_str(&format!("- {} : {}\n", c.name, d));
             }
         }
-        s.push_str("\n");
+        s.push('\n');
         Some(s)
     }
 

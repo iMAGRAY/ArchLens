@@ -87,7 +87,7 @@ impl MetricsCalculator {
             if let Some(layer) = &capsule.layer {
                 layer_groups
                     .entry(layer.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(capsule.id);
             }
         }
@@ -286,7 +286,7 @@ impl MetricsCalculator {
         let mut layer_cohesion_sum = 0.0;
         let mut layer_count = 0;
 
-        for (_layer_name, capsule_ids) in &layer_groups {
+        for capsule_ids in layer_groups.values() {
             let mut internal_relations = 0;
             let mut external_relations = 0;
 

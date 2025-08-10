@@ -27,3 +27,7 @@ impl GraphOptimizer {
         Ok(())
     }
 }
+
+impl Default for GraphOptimizer {
+    fn default() -> Self { Self::new() }
+}

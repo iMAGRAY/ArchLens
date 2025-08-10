@@ -65,3 +65,7 @@ impl PatternDetector {
         }]
     }
 }
+
+impl Default for PatternDetector {
+    fn default() -> Self { Self::new() }
+}

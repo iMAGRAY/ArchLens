@@ -80,7 +80,7 @@ fn add_diagram_header(output: &mut String) {
     output.push_str("    classDef service fill:#4ecdc4,stroke:#00b894,stroke-width:2px\n");
     output.push_str("    classDef utility fill:#ffe66d,stroke:#fdcb6e,stroke-width:2px\n");
     output.push_str("    classDef config fill:#a29bfe,stroke:#6c5ce7,stroke-width:2px\n");
-    output.push_str("\n");
+    output.push('\n');
 }
 
 fn collect_nodes(dependencies: &[ModuleDependency]) -> HashMap<String, String> {
@@ -107,7 +107,7 @@ fn add_node_definitions(output: &mut String, nodes: &HashMap<String, String>) {
             NodeType::Config => output.push_str(&format!("    class {} config\n", node_id)),
         }
     }
-    output.push_str("\n");
+    output.push('\n');
 }
 
 fn add_connections(output: &mut String, dependencies: &[ModuleDependency]) {

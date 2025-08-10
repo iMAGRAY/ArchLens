@@ -33,7 +33,7 @@ impl CapsuleGraphBuilder {
             if let Some(layer) = &capsule.layer {
                 layers
                     .entry(layer.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(capsule.id);
             }
         }
