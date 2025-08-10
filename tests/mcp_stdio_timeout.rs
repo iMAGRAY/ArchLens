@@ -21,7 +21,7 @@ fn stdio_export_times_out() {
     // Send tools/call for heavy tool
     {
         let mut stdin = child.stdin.take().unwrap();
-        let call = r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":"."}}}
+        let call = r#"{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":"tests/fixtures/small_project","use_cache":false}}}
 "#;
         stdin.write_all(call.as_bytes()).unwrap();
     }
