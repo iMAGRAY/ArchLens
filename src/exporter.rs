@@ -405,12 +405,24 @@ impl Exporter {
         if graph.capsules.is_empty() { return None; }
         let mut category_counts: HashMap<String, usize> = HashMap::new();
         let mut category_components: HashMap<String, HashMap<Uuid, usize>> = HashMap::new();
+        let mut category_severity: HashMap<String, (usize, usize, usize)> = HashMap::new(); // High, Med, Low
+        let mut category_suggestion: HashMap<String, String> = HashMap::new();
         for (id, cap) in &graph.capsules {
             for w in &cap.warnings {
                 let cat = w.category.clone();
                 *category_counts.entry(cat.clone()).or_insert(0) += 1;
-                let entry = category_components.entry(cat).or_insert_with(HashMap::new);
+                let entry = category_components.entry(cat.clone()).or_insert_with(HashMap::new);
                 *entry.entry(*id).or_insert(0) += 1;
+                let sev = category_severity.entry(cat.clone()).or_insert((0,0,0));
+                match w.level {
+                    Priority::High => sev.0 += 1,
+                    Priority::Medium => sev.1 += 1,
+                    Priority::Low => sev.2 += 1,
+                    _ => {}
+                }
+                if category_suggestion.get(&cat).is_none() {
+                    if let Some(sug) = &w.suggestion { if !sug.is_empty() { category_suggestion.insert(cat.clone(), sug.clone()); } }
+                }
             }
         }
         if category_counts.is_empty() { return None; }
@@ -424,13 +436,16 @@ impl Exporter {
             let mut comps: Vec<(Uuid, usize)> = category_components.get(&cat).cloned().unwrap_or_default().into_iter().collect();
             comps.sort_by_key(|(_, n)| Reverse(*n));
             let mut top_names: Vec<String> = Vec::new();
-            for (cid, _n) in comps.into_iter().take(3) {
-                if let Some(c) = graph.capsules.get(&cid) { top_names.push(c.name.clone()); }
-            }
+            for (cid, _n) in comps.into_iter().take(3) { if let Some(c) = graph.capsules.get(&cid) { top_names.push(c.name.clone()); } }
+            let sev = category_severity.get(&cat).cloned().unwrap_or((0,0,0));
+            let sev_str = format!("H:{} M:{} L:{}", sev.0, sev.1, sev.2);
+            let sug = category_suggestion.get(&cat).map(|s| s.as_str()).unwrap_or("");
             if top_names.is_empty() {
-                out.push_str(&format!("- {}: {}\n", cat, cnt));
+                if sug.is_empty() { out.push_str(&format!("- {}: {} [{}]\n", cat, cnt, sev_str)); }
+                else { out.push_str(&format!("- {}: {} [{}] (hint: {})\n", cat, cnt, sev_str, sug)); }
             } else {
-                out.push_str(&format!("- {}: {} (top: {})\n", cat, cnt, top_names.join(", ")));
+                if sug.is_empty() { out.push_str(&format!("- {}: {} [{}] (top: {})\n", cat, cnt, sev_str, top_names.join(", "))); }
+                else { out.push_str(&format!("- {}: {} [{}] (top: {}; hint: {})\n", cat, cnt, sev_str, top_names.join(", "), sug)); }
             }
         }
         out.push_str("\n");
