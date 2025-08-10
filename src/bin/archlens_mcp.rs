@@ -406,10 +406,20 @@ async fn get_schemas() -> Result<Json<serde_json::Value>, axum::http::StatusCode
     Ok(Json(serde_json::json!({"resources": list})))
 }
 
-async fn post_schema_read(Json(args): Json<ResourceReadArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    match read_resource_uri(&args.uri) {
-        Ok((mime, text)) => Ok(Json(serde_json::json!({"uri": args.uri, "mime": mime, "text": text}))),
-        Err(_) => Err(axum::http::StatusCode::BAD_REQUEST),
+async fn get_presets() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let resources = list_schema_resources().into_iter().filter(|r| r.description.as_deref() == Some("AI preset (recommended tool args)")).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"resources": resources})))
+}
+
+async fn get_recommendations(Json(payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    // very light heuristic: choose preset by detail_level or requested focus
+    let focus = payload.get("focus").and_then(|v| v.as_str()).unwrap_or("");
+    let rec = if focus.contains("cycle") { "cycles_focus" } else if focus.contains("plan") { "refactor_plan" } else { "health_check" };
+    let file = presets_dir().join(format!("{}.json", rec));
+    if let Ok(text) = fs::read_to_string(&file) {
+        Ok(Json(serde_json::json!({"preset": rec, "arguments": serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::json!({})) })))
+    } else {
+        Ok(Json(serde_json::json!({"preset": rec})))
     }
 }
 
@@ -421,6 +431,8 @@ fn build_http_router() -> Router {
         .route("/diagram/generate", post(post_diagram))
         .route("/schemas/list", get(get_schemas))
         .route("/schemas/read", post(post_schema_read))
+        .route("/presets/list", get(get_presets))
+        .route("/ai/recommend", post(get_recommendations))
         .with_state(HttpState)
 }
 
@@ -568,6 +580,12 @@ fn list_prompts() -> Vec<PromptDescription> {
             description: "Produce a prioritized refactoring plan given the problems.".into(),
             messages: vec![ PromptMessage{ role: "system".into(), content: "Provide a pragmatic, risk-aware refactoring plan.".into() },
                             PromptMessage{ role: "user".into(), content: "Suggest a prioritized refactoring plan for the issues found.".into() } ]
+        },
+        PromptDescription {
+            name: "ai.next_steps".into(),
+            description: "Given an analysis snippet, propose the next best MCP calls with arguments to drill down efficiently.".into(),
+            messages: vec![ PromptMessage{ role: "system".into(), content: "Return a minimal set of next MCP calls with arguments to maximize signal, minimize tokens.".into() },
+                            PromptMessage{ role: "user".into(), content: "Review this analysis and recommend next MCP calls (tools and args) to investigate critical risks first.".into() } ]
         }
     ]
 }
