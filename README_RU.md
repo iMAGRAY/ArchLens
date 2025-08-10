@@ -560,6 +560,13 @@ curl -s localhost:5178/schemas/list | jq
 ```
 
 Конфигурация Cursor/Claude (STDIO):
+
+Рекомендуемый маршрут для ИИ‑агента:
+- Начать с `export.ai_summary_json` (top_n=5) — минимальные факты
+- Вызвать `/ai/recommend` (или `ai.recommend` по STDIO) с этим JSON — получить следующие оптимальные вызовы
+- Детализировать `export.ai_compact` через `sections` и `top_n` (и `max_output_chars`)
+- Визуализировать `graph.build`, если есть циклы/сильная связанность
+- Кэшировать через `etag` и `use_cache` — экономия токенов
 ```json
 {
   "mcpServers": {

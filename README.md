@@ -547,6 +547,13 @@ curl -s localhost:5178/schemas/list | jq
 
 Cursor/Claude (STDIO) config snippet:
 
+Best-practice flow for AI agents:
+- Start with `export.ai_summary_json` (top_n=5) to get minimal facts
+- Use `/ai/recommend` (or `ai.recommend` via STDIO) with that JSON to get the next best calls
+- Drill down with `export.ai_compact` using `sections` and `top_n` (and `max_output_chars`)
+- Visualize with `graph.build` if cycles/coupling are present
+- Cache results with `etag` and reuse `use_cache` to minimize tokens
+
 ```json
 {
   "mcpServers": {
