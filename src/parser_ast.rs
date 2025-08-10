@@ -47,7 +47,7 @@ pub enum ASTElementType {
 /// Продвинутый парсер AST с поддержкой множественных стратегий
 #[derive(Debug)]
 pub struct ParserAST {
-    // Паттерны для различных языков
+    // Паттерны для различных языков (regex путь)
     rust_patterns: LanguagePatterns,
     js_patterns: LanguagePatterns,
     ts_patterns: LanguagePatterns,
@@ -285,14 +285,37 @@ impl ParserAST {
         })
     }
 
-    /// Парсит файл с использованием продвинутого анализа
+    /// Парсит файл: если включён feature `tree_sitter`, используем парсер tree-sitter для поддерживаемых языков,
+    /// иначе — regex fallback. На ошибки — безопасный откат к regex.
     pub fn parse_file(&mut self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Vec<ASTElement>> {
-        // Используем кеширование для оптимизации
         let cache_key = format!("{}:{}", file_path.display(), content.len());
-        if let Some(cached) = self.pattern_cache.get(&cache_key) {
-            return Ok(cached.clone());
-        }
+        if let Some(cached) = self.pattern_cache.get(&cache_key) { return Ok(cached.clone()); }
 
+        #[cfg(feature = "tree_sitter")]
+        {
+            if let Some(elements) = self.try_tree_sitter_parse(file_path, content, file_type)? {
+                self.pattern_cache.insert(cache_key, elements.clone());
+                return Ok(elements);
+            }
+        }
+        // Fallback regex
+        let elements = self.parse_file_regex(file_path, content, file_type)?;
+        self.pattern_cache.insert(cache_key, elements.clone());
+        Ok(elements)
+    }
+
+    #[cfg(feature = "tree_sitter")]
+    fn try_tree_sitter_parse(&self, _file_path: &Path, content: &str, file_type: &FileType) -> Result<Option<Vec<ASTElement>>> {
+        // Минимальный каркас: при поддерживаемом языке возвращаем None при пустом контенте, иначе — пока не реализовано
+        // (дальнейшее наполнение — последующим инкрементом)
+        let supported = matches!(file_type, FileType::Rust | FileType::JavaScript | FileType::TypeScript | FileType::Python);
+        if !supported { return Ok(None); }
+        if content.trim().is_empty() { return Ok(Some(Vec::new())); }
+        // #INCOMPLETE: Реальный tree-sitter разбор — 6–10 ч (подключение грамматик, обход дерева и маппинг в ASTElement)
+        Ok(None)
+    }
+
+    fn parse_file_regex(&self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Vec<ASTElement>> {
         let patterns = match file_type {
             FileType::Rust => &self.rust_patterns,
             FileType::JavaScript => &self.js_patterns,
@@ -303,24 +326,14 @@ impl ParserAST {
             FileType::Go => &self.go_patterns,
             _ => return Ok(vec![]),
         };
-
         let mut elements = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
-        
-        // Анализируем каждую строку с использованием специализированных паттернов
         for (line_num, line) in lines.iter().enumerate() {
             if let Some(element) = self.parse_line_advanced(line, line_num + 1, patterns, file_type) {
                 elements.push(element);
             }
         }
-
-        // Вычисляем реальную сложность
-        for element in &mut elements {
-            element.complexity = self.calculate_complexity(&element.content, patterns);
-        }
-
-        // Кешируем результат
-        self.pattern_cache.insert(cache_key, elements.clone());
+        for element in &mut elements { element.complexity = self.calculate_complexity(&element.content, patterns); }
         Ok(elements)
     }
 

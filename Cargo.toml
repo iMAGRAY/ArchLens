@@ -35,12 +35,12 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
-# tree-sitter stack is optional; enable with `--features tree_sitter`
-# tree-sitter = { version = "0.20", optional = true }
-# tree-sitter-rust = { version = "0.20", optional = true }
-# tree-sitter-javascript = { version = "0.20", optional = true }
-# tree-sitter-typescript = { version = "0.20", optional = true }
-# tree-sitter-python = { version = "0.20", optional = true }
+# Optional tree-sitter stack (enabled via feature `tree_sitter`)
+tree-sitter = { version = "0.20", optional = true }
+tree-sitter-rust = { version = "0.20", optional = true }
+tree-sitter-javascript = { version = "0.20", optional = true }
+tree-sitter-typescript = { version = "0.20", optional = true }
+tree-sitter-python = { version = "0.20", optional = true }
 thiserror = "1.0"
 anyhow = "1.0"
 walkdir = "2.4"
@@ -56,7 +56,13 @@ tokio = { version = "1.0", features = ["full"] }
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
 # optional feature gate for tree-sitter based parsing (future work)
-tree_sitter = []
+tree_sitter = [
+  "dep:tree-sitter",
+  "dep:tree-sitter-rust",
+  "dep:tree-sitter-javascript",
+  "dep:tree-sitter-typescript",
+  "dep:tree-sitter-python"
+]
 default = []
 
 [profile.release]

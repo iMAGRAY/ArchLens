@@ -355,22 +355,26 @@ impl Exporter {
         Ok(prompt)
     }
 
-    /// Экспорт в AI Compact формат
+    /// Супер-компактный сводный экспорт под ИИ: топ метрик, без длинных блоков
     pub fn export_to_ai_compact(&self, graph: &CapsuleGraph) -> Result<String> {
         let mut compact = String::new();
-        
         compact.push_str("# AI Compact Analysis\n\n");
-        compact.push_str(&format!("## Summary\n"));
-        compact.push_str(&format!("- Components: {}\n", graph.capsules.len()));
-        compact.push_str(&format!("- Relations: {}\n", graph.relations.len()));
-        compact.push_str(&format!("- Complexity: {:.2}\n\n", graph.metrics.complexity_average));
+        compact.push_str(&format!("## Summary\n- Components: {}\n- Relations: {}\n- Complexity(avg): {:.2}\n\n", graph.metrics.total_capsules, graph.metrics.total_relations, graph.metrics.complexity_average));
         
-        compact.push_str("## Components\n");
-        for capsule in graph.capsules.values() {
-            compact.push_str(&format!("{}: {:?} ({})\n", 
-                capsule.name, capsule.capsule_type, capsule.complexity));
+        // Топ-капсулы по сложности
+        let mut top: Vec<_> = graph.capsules.values().collect();
+        top.sort_by_key(|c| std::cmp::Reverse(c.complexity));
+        let top = top.into_iter().take(10);
+        compact.push_str("## Top Complexity Components\n");
+        for capsule in top { compact.push_str(&format!("- {} ({:?}) : {}\n", capsule.name, capsule.capsule_type, capsule.complexity)); }
+        
+        // Краткие слои
+        if !graph.layers.is_empty() {
+            compact.push_str("\n## Layers\n");
+            let mut layers: Vec<_> = graph.layers.iter().map(|(k,v)| (k.clone(), v.len())).collect();
+            layers.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            for (name, count) in layers.into_iter().take(8) { compact.push_str(&format!("- {}: {}\n", name, count)); }
         }
-        
         Ok(compact)
     }
     
