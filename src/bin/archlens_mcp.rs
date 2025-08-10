@@ -549,6 +549,75 @@ fn reco_thresholds_from_env() -> RecoThresholds {
     }
 }
 
+fn env_str(name: &str, default: &str) -> String {
+    std::env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+fn env_summary_mode() -> String { // "auto" | "fast" | "full"
+    let m = env_str("ARCHLENS_SUMMARY_MODE", "auto");
+    match m.as_str() {
+        "fast" | "full" => m,
+        _ => "auto".to_string(),
+    }
+}
+
+fn env_summary_auto_file_threshold() -> usize {
+    env_usize("ARCHLENS_SUMMARY_AUTO_FILES", 2000)
+}
+
+fn build_fast_ai_summary_json(project_path: &str, top_n: Option<usize>) -> Result<serde_json::Value, String> {
+    // Cheap structure scan (no AST, no file reads)
+    let st = stats::get_project_structure(project_path).map_err(|e| e.to_string())?;
+    // Layers frequency
+    use std::collections::HashMap;
+    let mut layer_counts: HashMap<String, usize> = HashMap::new();
+    for f in &st.files {
+        let layer = crate::cli::stats::determine_layer(std::path::Path::new(&f.path));
+        *layer_counts.entry(layer).or_insert(0) += 1;
+    }
+    let mut layers: Vec<(String, usize)> = layer_counts.into_iter().collect();
+    layers.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let layers_json: Vec<serde_json::Value> = layers
+        .into_iter()
+        .take(8)
+        .map(|(name, count)| serde_json::json!({"name": name, "count": count}))
+        .collect();
+
+    // Top components by file size (proxy for complexity)
+    let mut files_sorted = st.files.clone();
+    files_sorted.sort_by(|a, b| b.size.cmp(&a.size).then(a.name.cmp(&b.name)));
+    let n = top_n.unwrap_or(10);
+    let top_complexity_components: Vec<serde_json::Value> = files_sorted
+        .into_iter()
+        .take(n)
+        .map(|f| {
+            serde_json::json!({
+                "component": f.name,
+                "type": "File",
+                "complexity": (f.size / 100).max(1) // rough proxy
+            })
+        })
+        .collect();
+
+    let summary = serde_json::json!({
+        "components": st.files.len(),
+        "relations": 0,
+        "complexity_avg": 0.0,
+        "coupling_index": 0.0,
+        "cohesion_index": 1.0,
+        "cyclomatic_complexity": 0,
+        "layers": layers_json,
+    });
+
+    Ok(serde_json::json!({
+        "summary": summary,
+        "problems_validated": [],
+        "cycles_top": [],
+        "top_coupling": [],
+        "top_complexity_components": top_complexity_components
+    }))
+}
+
 
 
 
@@ -1448,11 +1517,25 @@ fn handle_call(
                             }
                         }
                     }
-                    let graph = build_graph_for_path(abspath.to_string_lossy().as_ref())?;
-                    let exporter = archlens::exporter::Exporter::new();
-                    let mut json = exporter
-                        .export_to_ai_summary_json(&graph)
-                        .map_err(|e| e.to_string())?;
+                    // Choose mode: fast/auto/full
+                    let mode = env_summary_mode();
+                    let mut use_fast = mode == "fast";
+                    if mode == "auto" {
+                        if let Ok(st) = stats::get_project_structure(abspath.to_string_lossy().as_ref()) {
+                            if st.total_files >= env_summary_auto_file_threshold() {
+                                use_fast = true;
+                            }
+                        }
+                    }
+
+                    let mut json = if use_fast {
+                        build_fast_ai_summary_json(abspath.to_string_lossy().as_ref(), args.top_n)?
+                    } else {
+                        let graph = build_graph_for_path(abspath.to_string_lossy().as_ref())?;
+                        let exporter = archlens::exporter::Exporter::new();
+                        exporter.export_to_ai_summary_json(&graph).map_err(|e| e.to_string())?
+                    };
+
                     json = trim_ai_summary_json(json, args.top_n);
                     let _txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
                     let etag = content_etag(&_txt);

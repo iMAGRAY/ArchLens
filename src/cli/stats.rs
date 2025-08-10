@@ -21,7 +21,7 @@ pub struct ProjectStructure {
     pub files: Vec<FileInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct FileInfo {
     pub path: String,
     pub name: String,
@@ -193,7 +193,7 @@ fn scan_directory_structure(
     Ok(())
 }
 
-fn determine_layer(path: &Path) -> String {
+pub fn determine_layer(path: &Path) -> String {
     let path_str = path.to_string_lossy().to_lowercase();
 
     if path_str.contains("test") || path_str.contains("spec") {
