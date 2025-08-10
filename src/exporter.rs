@@ -4,6 +4,7 @@ use uuid::Uuid;
 use serde_json;
 use std::collections::HashMap;
 use crate::types::Result;
+use std::cmp::Reverse;
 
 /// Экспортер результатов анализа в различные форматы
 #[derive(Debug)]
@@ -14,15 +15,11 @@ pub struct Exporter {
 
 impl Exporter {
     pub fn new() -> Self {
-        Self {
-            mermaid_theme: "default".to_string(),
-        }
+        Self { mermaid_theme: "default".to_string() }
     }
     
     pub fn with_theme(theme: String) -> Self {
-        Self {
-            mermaid_theme: theme,
-        }
+        Self { mermaid_theme: theme }
     }
     
     /// Основной метод экспорта
@@ -39,7 +36,6 @@ impl Exporter {
             ExportFormat::LLMPrompt => self.export_to_llm_prompt(graph)?,
             ExportFormat::AICompact => self.export_to_ai_compact(graph)?,
         };
-        
         std::fs::write(output_path, &content)?;
         Ok(content)
     }
@@ -372,9 +368,19 @@ impl Exporter {
         if compact.ends_with("Heuristic)\n") { compact.push_str("- None\n"); }
         compact.push_str("\n");
         
+        // Циклы (топ-5 по длине)
+        if let Some(cycles_section) = self.build_cycles_section(graph) {
+            compact.push_str(&cycles_section);
+        }
+
+        // Топ-капсулы по связанности (степень)
+        if let Some(coupling_section) = self.build_top_coupling_section(graph) {
+            compact.push_str(&coupling_section);
+        }
+
         // Топ-капсулы по сложности
         let mut top: Vec<_> = graph.capsules.values().collect();
-        top.sort_by_key(|c| std::cmp::Reverse(c.complexity));
+        top.sort_by_key(|c| Reverse(c.complexity));
         let top = top.into_iter().take(10);
         compact.push_str("## Top Complexity Components\n");
         for capsule in top { compact.push_str(&format!("- {} ({:?}) : {}\n", capsule.name, capsule.capsule_type, capsule.complexity)); }
@@ -383,12 +389,57 @@ impl Exporter {
         if !graph.layers.is_empty() {
             compact.push_str("\n## Layers\n");
             let mut layers: Vec<_> = graph.layers.iter().map(|(k,v)| (k.clone(), v.len())).collect();
-            layers.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            layers.sort_by_key(|(_, n)| Reverse(*n));
             for (name, count) in layers.into_iter().take(8) { compact.push_str(&format!("- {}: {}\n", name, count)); }
         }
         Ok(compact)
     }
-    
+
+    fn build_cycles_section(&self, graph: &CapsuleGraph) -> Option<String> {
+        use crate::graph::CycleDetector;
+        let mut detector = CycleDetector::new();
+        let cycles = detector.find_cycles(graph);
+        if cycles.is_empty() { return None; }
+        // Сортируем по длине цикла и берём топ-5
+        let mut cycles_sorted = cycles;
+        cycles_sorted.sort_by_key(|c| c.len());
+        let take_n = 5.min(cycles_sorted.len());
+        let mut s = String::new();
+        s.push_str("## Cycles (Top)\n");
+        for cycle in cycles_sorted.into_iter().take(take_n) {
+            let names: Vec<String> = cycle.iter().filter_map(|id| graph.capsules.get(id).map(|c| c.name.clone())).collect();
+            if !names.is_empty() {
+                let mut path = names.join(" -> ");
+                // визуально замкнём на первый
+                if let Some(first) = names.first() { path.push_str(&format!(" -> {}", first)); }
+                s.push_str(&format!("- {}\n", path));
+            }
+        }
+        s.push_str("\n");
+        Some(s)
+    }
+
+    fn build_top_coupling_section(&self, graph: &CapsuleGraph) -> Option<String> {
+        if graph.capsules.is_empty() { return None; }
+        let mut degree: HashMap<Uuid, usize> = HashMap::new();
+        for r in &graph.relations {
+            *degree.entry(r.from_id).or_insert(0) += 1;
+            *degree.entry(r.to_id).or_insert(0) += 1;
+        }
+        if degree.is_empty() { return None; }
+        let mut items: Vec<(Uuid, usize)> = degree.into_iter().collect();
+        items.sort_by_key(|(_, d)| Reverse(*d));
+        let mut s = String::new();
+        s.push_str("## Top Coupling\n");
+        for (id, d) in items.into_iter().take(10) {
+            if let Some(c) = graph.capsules.get(&id) {
+                s.push_str(&format!("- {} : {}\n", c.name, d));
+            }
+        }
+        s.push_str("\n");
+        Some(s)
+    }
+
     // Вспомогательные методы
     fn sanitize_node_id(&self, name: &str) -> String {
         name.chars()
