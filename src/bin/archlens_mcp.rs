@@ -595,6 +595,13 @@ fn env_test_delay_ms() -> Option<u64> {
         .and_then(|s| s.parse().ok())
 }
 
+fn env_enable_http() -> bool {
+    matches!(
+        std::env::var("ARCHLENS_ENABLE_HTTP").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("on")
+    )
+}
+
 // Recommendation thresholds (configurable via env)
 #[derive(Clone, Copy, Debug)]
 struct RecoThresholds {
@@ -1966,16 +1973,21 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // 2) HTTP сервер (Streamable)
-    let port: u16 = std::env::var("ARCHLENS_MCP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(5178);
-    let addr = ("0.0.0.0".to_string(), port);
-    let app = build_http_router();
-    let http = axum::serve(
-        tokio::net::TcpListener::bind(addr).await?,
-        app.into_make_service(),
-    );
+    let http_opt = if env_enable_http() {
+        let port: u16 = std::env::var("ARCHLENS_MCP_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5178);
+        let addr = ("0.0.0.0".to_string(), port);
+        let app = build_http_router();
+        let http = axum::serve(
+            tokio::net::TcpListener::bind(addr).await?,
+            app.into_make_service(),
+        );
+        Some(http)
+    } else {
+        None
+    };
 
     // 3) STDIO JSON-RPC петля
     let (tx_lines, mut rx_lines) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -2086,9 +2098,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    tokio::select! {
-        _ = http => Ok(()),
-        _ = stdio => Ok(()),
+    if let Some(http) = http_opt {
+        tokio::select! {
+            _ = http => Ok(()),
+            _ = stdio => Ok(()),
+        }
+    } else {
+        let _ = stdio.await;
+        Ok(())
     }
 }
 
