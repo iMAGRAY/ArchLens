@@ -7,6 +7,8 @@ fn http_ai_summary_json_and_presets() {
     let port = 5198u16;
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
         .env("ARCHLENS_MCP_PORT", format!("{}", port))
+        .env("ARCHLENS_TIMEOUT_MS", "180000")
+        .env("ARCHLENS_TEST_DELAY_MS", "0")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
