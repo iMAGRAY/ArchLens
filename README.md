@@ -510,3 +510,49 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 *Star ⭐ this repository if you find it helpful!*
 
 </div> 
+
+## 🔌 MCP Server (Rust) Quick Start
+
+- Build: `cargo build --release --bin archlens-mcp`
+- Transports:
+  - STDIO (JSON‑RPC): methods `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`
+  - Streamable HTTP (POST/SSE): `POST /export/ai_compact`, `POST /structure/get`, `POST /diagram/generate`, `GET /sse/refresh`, `GET /schemas/list`, `POST /schemas/read`
+- detail_level: `summary` (default) | `standard` | `full` — controls verbosity and token budget
+
+Examples
+
+STDIO (send lines to stdin):
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"export.ai_compact","arguments":{"project_path":".","detail_level":"summary"}}}
+```
+
+HTTP (default port 5178):
+
+```bash
+# AI‑compact (summary)
+curl -s -X POST localhost:5178/export/ai_compact -H 'content-type: application/json' -d '{"project_path":".","detail_level":"summary"}'
+
+# Structure (standard)
+curl -s -X POST localhost:5178/structure/get -H 'content-type: application/json' -d '{"project_path":".","detail_level":"standard"}'
+
+# Diagram (full)
+curl -s -X POST localhost:5178/diagram/generate -H 'content-type: application/json' -d '{"project_path":".","diagram_type":"mermaid","detail_level":"full"}'
+
+# Schemas
+curl -s localhost:5178/schemas/list | jq
+```
+
+Cursor/Claude (STDIO) config snippet:
+
+```json
+{
+  "mcpServers": {
+    "archlens": {
+      "command": "/absolute/path/to/target/release/archlens-mcp",
+      "env": { "ARCHLENS_DEBUG": "false" }
+    }
+  }
+}
+``` 
