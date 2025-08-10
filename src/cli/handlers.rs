@@ -1,30 +1,24 @@
 use std::path::Path;
 use crate::types::*;
 
-#[derive(Debug)]
-pub enum CliCommand {
-    Analyze { project_path: String },
-    Export { project_path: String, format: String, output: Option<String> },
-    Structure { project_path: String },
-    Diagram { project_path: String, diagram_type: String, output: Option<String> },
-    Help,
-}
+use super::parser;
 
-pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_command(command: parser::CliCommand) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use super::{stats, export, diagram};
     
     match command {
-        CliCommand::Help => {
+        parser::CliCommand::Help => {
             print_help();
         },
-        CliCommand::Analyze { project_path } => {
+        parser::CliCommand::Version => {
+            println!("archlens v{}", env!("CARGO_PKG_VERSION"));
+        },
+        parser::CliCommand::Analyze { project_path, verbose: _verbose, include_tests: _include_tests } => {
             eprintln!("🔍 Анализ проекта: {}", project_path);
-            
             if !Path::new(&project_path).exists() {
                 eprintln!("❌ Путь не существует: {}", project_path);
                 std::process::exit(1);
             }
-            
             match stats::get_project_stats(&project_path) {
                 Ok(stats) => {
                     eprintln!("✅ Анализ завершен успешно");
@@ -36,11 +30,10 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
                 }
             }
         },
-        CliCommand::Export { project_path, format, output } => {
-            eprintln!("📤 Экспорт проекта: {} в формат: {}", project_path, format);
-            
-            match format.as_str() {
-                "ai_compact" => {
+        parser::CliCommand::Export { project_path, format, output, options: _options } => {
+            eprintln!("📤 Экспорт проекта: {} в формат: {:?}", project_path, format);
+            match format {
+                parser::ExportFormat::AiCompact => {
                     match export::generate_ai_compact(&project_path) {
                         Ok(content) => {
                             if let Some(output_file) = output {
@@ -56,16 +49,15 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
                         }
                     }
                 },
-                _ => {
-                    eprintln!("❌ Неподдерживаемый формат: {}", format);
+                parser::ExportFormat::Json | parser::ExportFormat::Markdown | parser::ExportFormat::Html => {
+                    eprintln!("❌ Неподдерживаемый формат: {:?}", format);
                     eprintln!("Доступные форматы: ai_compact");
                     std::process::exit(1);
                 }
             }
         },
-        CliCommand::Structure { project_path } => {
+        parser::CliCommand::Structure { project_path, .. } => {
             eprintln!("📊 Структура проекта: {}", project_path);
-            
             match stats::get_project_structure(&project_path) {
                 Ok(structure) => {
                     println!("{}", serde_json::to_string_pretty(&structure)?);
@@ -76,57 +68,36 @@ pub async fn handle_command(command: CliCommand) -> std::result::Result<(), Box<
                 }
             }
         },
-        CliCommand::Diagram { project_path, diagram_type, output } => {
-            eprintln!("📈 Генерация диаграммы: {} типа: {}", project_path, diagram_type);
-            
-            match diagram_type.as_str() {
+        parser::CliCommand::Diagram { project_path, diagram_type, output, include_metrics: _ } => {
+            eprintln!("📈 Генерация диаграммы: {} типа: {:?}", project_path, diagram_type);
+            let diag_type = match diagram_type { parser::DiagramType::Mermaid => "mermaid", parser::DiagramType::Dot => "dot", parser::DiagramType::Svg => "svg" };
+            match diag_type {
                 "mermaid" => {
                     match diagram::generate_mermaid_diagram(&project_path) {
                         Ok(content) => {
-                            let output_path = output.unwrap_or_else(|| "diagram.mmd".to_string());
-                            std::fs::write(&output_path, content)?;
-                            eprintln!("✅ Mermaid диаграмма сохранена в: {}", output_path);
+                            if let Some(out) = output { std::fs::write(&out, &content)?; eprintln!("✅ Mermaid диаграмма сохранена в: {}", out); } else { println!("{}", content); }
                         },
-                        Err(err) => {
-                            eprintln!("❌ Ошибка генерации диаграммы: {}", err);
-                            std::process::exit(1);
-                        }
+                        Err(err) => { eprintln!("❌ Ошибка генерации диаграммы: {}", err); std::process::exit(1); }
                     }
                 },
-                _ => {
-                    eprintln!("❌ Неподдерживаемый тип диаграммы: {}", diagram_type);
-                    eprintln!("Доступные типы: mermaid");
-                    std::process::exit(1);
-                }
+                _ => { eprintln!("❌ Неподдерживаемый тип диаграммы: {}", diag_type); eprintln!("Доступные типы: mermaid"); std::process::exit(1); }
             }
         }
     }
-    
     Ok(())
 }
 
-fn print_help() {
+pub fn print_help() {
     println!("🏗️ ArchLens - Анализатор архитектуры кода");
     println!();
     println!("ИСПОЛЬЗОВАНИЕ:");
     println!("  archlens <КОМАНДА> [ОПЦИИ]");
     println!();
     println!("КОМАНДЫ:");
-    println!("  analyze <path>                 Анализ архитектуры проекта");
-    println!("  export <path> <format> [out]   Экспорт анализа в указанный формат");
-    println!("  structure <path>               Получение структуры проекта");
-    println!("  diagram <path> <type> [out]    Генерация диаграммы архитектуры");
-    println!("  help                           Показать эту справку");
-    println!();
-    println!("ФОРМАТЫ ЭКСПОРТА:");
-    println!("  ai_compact    Компактный формат для AI (~2800 токенов)");
-    println!();
-    println!("ТИПЫ ДИАГРАММ:");
-    println!("  mermaid       Mermaid диаграмма");
-    println!();
-    println!("ПРИМЕРЫ:");
-    println!("  archlens analyze /path/to/project");
-    println!("  archlens export /path/to/project ai_compact analysis.txt");
-    println!("  archlens diagram /path/to/project mermaid diagram.mmd");
-    println!("  archlens structure /path/to/project");
+    println!("  analyze <path> [--verbose] [--include-tests]  Анализ архитектуры проекта");
+    println!("  export <path> <format> [--output <file>]       Экспорт анализа в формат (ai_compact)");
+    println!("  structure <path> [--max-depth N] [--show-metrics]  Получение структуры проекта");
+    println!("  diagram <path> <type> [--output <file>]       Генерация диаграммы архитектуры");
+    println!("  version                                      Печать версии");
+    println!("  help                                         Показать эту справку");
 } 

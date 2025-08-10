@@ -3,59 +3,86 @@ use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
 
+use crate::file_scanner::FileScanner;
+use crate::parser_ast::ParserAST;
+use crate::metadata_extractor::MetadataExtractor;
+use crate::capsule_constructor::CapsuleConstructor;
+use crate::capsule_graph_builder::CapsuleGraphBuilder;
+use crate::validator_optimizer::ValidatorOptimizer;
+use crate::exporter::Exporter;
+
 /// Generates an AI-readable compact analysis report
-/// 
-/// This function creates a comprehensive but concise analysis report that includes:
-/// - Project statistics (files, lines of code, complexity)
-/// - Critical issues detection
-/// - Architectural pattern recognition
-/// - Project structure overview
-/// - Key modules identification
-/// - Quality metrics calculation
-/// - Actionable recommendations
-/// 
-/// # Arguments
-/// 
-/// * `project_path` - Path to the project root directory to analyze
-/// 
-/// # Returns
-/// 
-/// A `Result` containing the formatted analysis report as a string, or an error message.
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use archlens::cli::export::generate_ai_compact;
-/// 
-/// let report = generate_ai_compact("/path/to/project")?;
-/// println!("{}", report);
-/// ```
-/// 
-/// # Report Format
-/// 
-/// The generated report follows a structured markdown format with:
-/// - Header with project information and analysis metadata
-/// - Quick statistics section
-/// - Critical issues (if any)
-/// - Architectural patterns detected
-/// - Project structure tree
-/// - Key modules listing
-/// - Recommendations for improvement
-/// - Quality metrics summary
+/// Prefer full pipeline for high-quality compact output; fallback to lightweight scan if needed
 pub fn generate_ai_compact(project_path: &str) -> std::result::Result<String, String> {
     if !Path::new(project_path).exists() {
         return Err("Path does not exist".to_string());
     }
-    
+
+    // Try full pipeline for maximum quality
+    match generate_ai_compact_from_graph(project_path) {
+        Ok(compact) => Ok(compact),
+        Err(err) => {
+            eprintln!("⚠️ Full pipeline failed, using lightweight mode: {}", err);
+            // Fallback to lightweight mode
+            generate_ai_compact_light(project_path)
+        }
+    }
+}
+
+fn generate_ai_compact_from_graph(project_path: &str) -> std::result::Result<String, String> {
+    let scanner = FileScanner::new(
+        vec!["**/*.rs".into(), "**/*.ts".into(), "**/*.js".into(), "**/*.py".into(), "**/*.java".into(), "**/*.go".into(), "**/*.cpp".into(), "**/*.c".into()],
+        vec!["**/target/**".into(), "**/node_modules/**".into(), "**/.git/**".into(), "**/dist/**".into(), "**/build/**".into()],
+        Some(10),
+    ).map_err(|e| e.to_string())?;
+    let files = scanner.scan_files(Path::new(project_path)).map_err(|e| e.to_string())?;
+
+    let mut parser = ParserAST::new().map_err(|e| e.to_string())?;
+    let mut all_nodes = Vec::new();
+    for file in &files {
+        if let Ok(content) = fs::read_to_string(&file.path) {
+            if let Ok(nodes) = parser.parse_file(&file.path, &content, &file.file_type) {
+                all_nodes.extend(nodes);
+            }
+        }
+    }
+
+    let constructor = CapsuleConstructor::new();
+    let mut capsules = Vec::new();
+    for file in &files {
+        // Привязываем узлы к файлам (простая эвристика по пути)
+        let file_nodes: Vec<_> = all_nodes.iter().filter(|n| file.path.to_string_lossy().contains(&n.name)).clone().collect();
+        if file_nodes.is_empty() {
+            continue;
+        }
+        let mut file_caps = constructor.create_capsules(&file_nodes, &file.path.clone()).map_err(|e| e.to_string())?;
+        capsules.append(&mut file_caps);
+    }
+
+    if capsules.is_empty() {
+        return Err("No capsules created".to_string());
+    }
+
+    let mut builder = CapsuleGraphBuilder::new();
+    let mut graph = builder.build_graph(&capsules).map_err(|e| e.to_string())?;
+
+    let validator = ValidatorOptimizer::new();
+    graph = validator.validate_and_optimize(&graph).map_err(|e| e.to_string())?;
+
+    let exporter = Exporter::new();
+    let compact = exporter.export_to_ai_compact(&graph).map_err(|e| e.to_string())?;
+    Ok(compact)
+}
+
+/// Lightweight mode used as a fallback when full pipeline is unavailable
+fn generate_ai_compact_light(project_path: &str) -> std::result::Result<String, String> {
+    // Preserve previous lightweight implementation (renamed)
     let mut output = String::new();
-    
-    // Header
     output.push_str("# 🏗️ AI COMPACT ARCHITECTURE ANALYSIS\n\n");
     output.push_str(&format!("**Project:** {}\n", project_path));
     output.push_str(&format!("**Analysis date:** {}\n", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
     output.push_str(&format!("**Analysis ID:** {}\n\n", uuid::Uuid::new_v4()));
-    
-    // Quick statistics
+
     let stats = collect_basic_stats(project_path)?;
     output.push_str("## 📊 QUICK STATISTICS\n");
     output.push_str(&format!("- **Total files:** {}\n", stats.total_files));
@@ -64,66 +91,46 @@ pub fn generate_ai_compact(project_path: &str) -> std::result::Result<String, St
     output.push_str(&format!("- **Components:** {}\n", stats.components));
     output.push_str(&format!("- **Connections:** {}\n", stats.connections));
     output.push_str("\n");
-    
-    // Critical issues
+
     let issues = analyze_critical_issues(project_path)?;
     if !issues.is_empty() {
         output.push_str("## 🚨 CRITICAL ISSUES\n");
-        for issue in issues {
-            output.push_str(&format!("- **{}:** {}\n", issue.severity, issue.description));
-        }
+        for issue in issues { output.push_str(&format!("- **{}:** {}\n", issue.severity, issue.description)); }
         output.push_str("\n");
     }
-    
-    // Architectural patterns
+
     let patterns = detect_architectural_patterns(project_path)?;
     if !patterns.is_empty() {
         output.push_str("## 🏛️ ARCHITECTURAL PATTERNS\n");
-        for pattern in patterns {
-            output.push_str(&format!("- **{}:** {} (confidence: {}%)\n", 
-                                   pattern.name, pattern.description, pattern.confidence));
-        }
+        for pattern in patterns { output.push_str(&format!("- **{}:** {} (confidence: {}%)\n", pattern.name, pattern.description, pattern.confidence)); }
         output.push_str("\n");
     }
-    
-    // Project structure
+
     let structure = analyze_project_structure(project_path)?;
     output.push_str("## 📁 PROJECT STRUCTURE\n");
     output.push_str(&format!("```\n{}\n```\n\n", structure));
-    
-    // Key modules
+
     let modules = analyze_key_modules(project_path)?;
     if !modules.is_empty() {
         output.push_str("## 🔧 KEY MODULES\n");
-        for module in modules {
-            output.push_str(&format!("- **{}** ({}): {}\n", 
-                                   module.name, module.category, module.description));
-        }
+        for module in modules { output.push_str(&format!("- **{}** ({}): {}\n", module.name, module.category, module.description)); }
         output.push_str("\n");
     }
-    
-    // Recommendations
+
     let recommendations = generate_recommendations(project_path)?;
     if !recommendations.is_empty() {
         output.push_str("## 💡 RECOMMENDATIONS\n");
-        for rec in recommendations {
-            output.push_str(&format!("- **{}:** {}\n", rec.priority, rec.description));
-        }
+        for rec in recommendations { output.push_str(&format!("- **{}:** {}\n", rec.priority, rec.description)); }
         output.push_str("\n");
     }
-    
-    // Quality metrics
+
     let quality = calculate_quality_metrics(project_path)?;
     output.push_str("## 📈 QUALITY METRICS\n");
     output.push_str(&format!("- **Maintainability index:** {}/100\n", quality.maintainability));
     output.push_str(&format!("- **Cyclomatic complexity:** {}\n", quality.complexity));
     output.push_str(&format!("- **Documentation coverage:** {}%\n", quality.documentation_coverage));
     output.push_str(&format!("- **Tech debt:** {}\n", quality.tech_debt));
-    output.push_str("\n");
-    
-    output.push_str("---\n");
-    output.push_str("*Generated by ArchLens AI Compact Export*\n");
-    
+    output.push_str("\n---\n*Generated by ArchLens AI Compact Export*\n");
     Ok(output)
 }
 

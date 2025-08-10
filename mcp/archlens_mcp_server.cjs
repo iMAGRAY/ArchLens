@@ -169,62 +169,37 @@ function resolveProjectPath(inputPath) {
   if (!inputPath || typeof inputPath !== 'string') {
     throw new Error('project_path is required and must be a string');
   }
-  
-  // STRICT VALIDATION: Reject common relative path patterns
-  if (inputPath === '.' || inputPath === '..' || 
+
+  // Support '.' and relative paths by resolving to absolute
+  if (inputPath === '.' || inputPath === '..' ||
       inputPath.startsWith('./') || inputPath.startsWith('../') ||
       inputPath.startsWith('.\\') || inputPath.startsWith('..\\')) {
-    throw new Error(`❌ RELATIVE PATHS NOT ALLOWED
-
-Received: "${inputPath}"
-
-MCP requires ABSOLUTE paths only. Use full directory paths like:
-- Linux/Mac: "/home/user/project" or "/absolute/path/to/project"  
-- Windows: "C:\\Users\\User\\Project" or "D:\\absolute\\path\\to\\project"
-
-❌ NOT ALLOWED: ".", "..", "./src", "../project", ".\\src"
-✅ REQUIRED: Full absolute paths only
-
-Please provide the complete absolute path to your project directory.`);
+    const resolved = path.resolve(CONFIG.paths.workingDirectory, inputPath);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Path does not exist: ${resolved}`);
+    }
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
+    return resolved;
   }
-  
+
   let resolvedPath;
-  
-  // ALWAYS resolve to absolute path - no relative paths allowed in MCP
   if (path.isAbsolute(inputPath)) {
     resolvedPath = path.normalize(inputPath);
-    logger.debug(`Using absolute path: ${resolvedPath}`);
   } else {
-    // This should never happen due to validation above, but keep as fallback
-    throw new Error(`❌ Path "${inputPath}" is not absolute. MCP requires full absolute paths only.`);
+    resolvedPath = path.resolve(CONFIG.paths.workingDirectory, inputPath);
   }
-  
-  // Validate path exists and is accessible
-  try {
-    if (!fs.existsSync(resolvedPath)) {
-      throw new Error(`Path does not exist: ${resolvedPath}`);
-    }
-    
-    const stat = fs.statSync(resolvedPath);
-    if (!stat.isDirectory()) {
-      throw new Error(`Path is not a directory: ${resolvedPath}`);
-    }
-    
-    // Test read access
-    fs.accessSync(resolvedPath, fs.constants.R_OK);
-    
-  } catch (error) {
-    if (error.code === 'EACCES' || error.code === 'EPERM') {
-      throw new Error(`Access denied to path: ${resolvedPath}\n` +
-        `🔧 Windows Solutions:\n` +
-        `  • Run as Administrator\n` +
-        `  • Check folder permissions\n` +
-        `  • Disable antivirus temporarily\n` +
-        `  • Ensure files are not in use`);
-    }
-    throw error;
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Path does not exist: ${resolvedPath}`);
   }
-  
+  const stat = fs.statSync(resolvedPath);
+  if (!stat.isDirectory()) {
+    throw new Error(`Path is not a directory: ${resolvedPath}`);
+  }
+  fs.accessSync(resolvedPath, fs.constants.R_OK);
   return resolvedPath;
 }
 
@@ -523,23 +498,15 @@ function createMCPResponse(toolName, result, error = null, projectPath = null) {
     return {
       content: [{
         type: "text",
-        text: `❌ ERROR ${getToolDisplayName(toolName)}
-
-Failed to ${getToolAction(toolName)}: ${projectPath || 'unknown path'}
-
-**Reason:** ${error.message.replace(/[^\x00-\x7F]/g, '?')}
-
-**Project path:** ${projectPath || 'n/a'}
-**Error time:** ${new Date().toLocaleString('en-US')}
-**Platform:** ${os.platform()} ${os.release()}`
+        text: `❌ ${getToolDisplayName(toolName)}\n\nReason: ${error.message.replace(/[^\x00-\x7F]/g, '?')}\nPath: ${projectPath || 'n/a'}\nTime: ${new Date().toLocaleString('en-US')}`
       }],
       isError: true
     };
   }
-  
-    return {
-      content: [{
-        type: "text",
+  // Minimized, high-signal response
+  return {
+    content: [{
+      type: "text",
       text: formatToolResult(toolName, result, projectPath)
     }]
   };
@@ -569,116 +536,28 @@ function getToolAction(toolName) {
 class ResponseFormatter {
   static formatAnalysisResult(result, projectPath) {
     const data = typeof result === 'string' ? JSON.parse(result) : result;
-    
-    return `# 🔍 PROJECT ANALYSIS BRIEF
-
-**Path:** ${projectPath}
-**Analysis performed:** ${new Date().toLocaleString('en-US')}
-
-## 📊 Key metrics
-- **Total files:** ${data.total_files || 'n/a'}
-- **Lines of code:** ${data.total_lines || 'n/a'}
-- **Scan date:** ${data.scanned_at ? new Date(data.scanned_at).toLocaleString('en-US') : 'n/a'}
-
-## 🗂️ File distribution
-${data.file_types ? Object.entries(data.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .slice(0, 10)
-  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
-  .join('\n') : 'Data unavailable'}
-
-## 📈 Architectural assessment
-${this.getArchitecturalRisk(data.total_files)}
-
-## 🎯 Deep analysis capabilities
-Use \`export_ai_compact\` to discover:
-- **Code Smells:** long methods, magic numbers, code duplication
-- **SOLID principles:** violations of single responsibility, open/closed
-- **Architectural antipatterns:** God Objects, tight coupling, circular dependencies
-- **Quality metrics:** cyclomatic complexity, technical debt
-
-*This is a preliminary assessment. Use specialized tools for detailed analysis.*`;
+    // produce a terse summary
+    return `# 🔍 PROJECT ANALYSIS\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n- Lines: ${data.total_lines || 'n/a'}\n${data.file_types ? '- Top: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,3).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
   }
-
   static formatExportResult(result, projectPath) {
-    if (result.output && typeof result.output === 'string' && result.output.trim().length > 0) {
-      return result.output; // AI Compact already formatted
+    if (result && typeof result === 'string' && result.trim().length > 0) {
+      // Already compact markdown from exporter
+      return result;
     }
-    
-    return `❌ ARCHITECTURE ANALYSIS ERROR
-    
-Failed to perform AI Compact export for project: ${projectPath}
-
-**Reason:** ${result.message || 'Unknown error'}
-**Details:** ${result.output || result.stderr || 'No details'}
-
-**What AI Compact should have analyzed:**
-- Code Smells (20+ types): long methods, magic numbers, code duplication
-- SOLID principles: single responsibility, open/closed, Liskov substitution
-- Architectural antipatterns: God Objects, tight coupling, circular dependencies
-- Quality metrics: cyclomatic complexity, cognitive complexity, maintainability index
-
-**Path:** ${projectPath}
-**Error time:** ${new Date().toLocaleString('en-US')}`;
+    if (result && result.output) { return result.output; }
+    return `❌ ARCHITECTURE ANALYSIS ERROR\nPath: ${projectPath}`;
   }
-
   static formatStructureResult(result, projectPath) {
-    const data = typeof result === 'string' ? JSON.parse(result) : result;
-    
-    return `# 📁 PROJECT STRUCTURE OVERVIEW
-
-**Path:** ${projectPath}
-**Analysis performed:** ${new Date().toLocaleString('en-US')}
-
-## 📊 General statistics
-- **Total files:** ${data.total_files || 'n/a'}
-- **Total lines:** ${data.total_lines || 'n/a'}
-- **Files shown:** ${data.files ? Math.min(data.files.length, data.total_files || 0) : 'n/a'} (limit: ${CONFIG.limits.maxFiles})
-
-## 🗂️ File types
-${data.file_types ? Object.entries(data.file_types)
-  .sort(([,a], [,b]) => b - a)
-  .map(([ext, count]) => `- **.${ext}**: ${count} file(s)`)
-  .join('\n') : 'Data unavailable'}
-
-## 🏗️ Architectural layers
-${data.layers ? data.layers.map(layer => `- **${layer}**`).join('\n') : '- Layers not identified'}
-
-## 📄 Key files (top 15)
-${data.files ? data.files.slice(0, 15).map(file => 
-  `- \`${file.path}\` (${file.extension}, ${(file.size/1024).toFixed(1)}KB)`
-).join('\n') + 
-(data.files.length > 15 ? `\n\n... and ${data.files.length - 15} more file(s)` : '') : 'Files not found'}
-
-*Structure overview complete. Use specialized tools for detailed problem analysis.*`;
+    const data = typeof result === 'string' ? JSON.parse(result) : (result.structure ? result.structure : result);
+    return `# 📁 STRUCTURE\n**Path:** ${projectPath}\n- Files: ${data.total_files || 'n/a'}\n${data.layers && data.layers.length ? '- Layers: ' + data.layers.join(', ') : ''}\n${data.file_types ? '- Types: ' + Object.entries(data.file_types).sort(([,a],[,b])=>b-a).slice(0,5).map(([ext,c])=>`.${ext}:${c}`).join(', ') : ''}`;
   }
-
   static formatDiagramResult(result, projectPath) {
     if (result.diagram && typeof result.diagram === 'string') {
-      return `# 📊 ARCHITECTURAL DIAGRAM
-
-**Project:** ${projectPath}
-**Type:** ${result.diagram_type || 'unknown'}
-**Created:** ${new Date().toISOString()}
-
-## Mermaid Diagram
-
-\`\`\`mermaid
-${result.diagram}
-\`\`\`
-
-*Generated by ArchLens for AI analysis*`;
+      const header = `# 📊 DIAGRAM\nPath: ${projectPath}\nType: ${result.diagram_type || 'mermaid'}`;
+      // Avoid huge payloads: keep diagram content as-is but allow caller to paginate
+      return `${header}\n\n\`\`\`mermaid\n${result.diagram}\n\`\`\``;
     }
-    
-    return `❌ DIAGRAM GENERATION ERROR
-    
-Failed to create diagram for project: ${projectPath}
-
-**Type:** ${result.diagram_type || 'unknown'}
-**Reason:** ${result.message || 'Unknown error'}
-
-**Path:** ${projectPath}
-**Error time:** ${new Date().toLocaleString('en-US')}`;
+    return `❌ DIAGRAM GENERATION ERROR\nPath: ${projectPath}`;
   }
 
   static getArchitecturalRisk(totalFiles) {

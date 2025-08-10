@@ -119,6 +119,9 @@ cargo build --release
 
 ArchLens includes a powerful MCP server for seamless AI assistant integration:
 
+- Now accepts absolute and relative paths ('.', './src') — they are resolved to absolute safely.
+- Responses are compact by default to minimize tokens while preserving signal.
+
 #### 🛠️ Setup with Claude Desktop
 
 1. **Configure MCP Settings** (`~/.config/claude-desktop/mcp_settings.json`):
