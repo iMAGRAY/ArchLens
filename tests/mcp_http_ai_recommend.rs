@@ -4,7 +4,9 @@ use std::{thread, time::Duration};
 #[test]
 fn http_ai_recommend_with_summary() {
     // Spawn server in background
+    let port = 5191u16; // unique port for this test to avoid conflicts
     let mut child = match Command::new(env!("CARGO_BIN_EXE_archlens-mcp"))
+        .env("ARCHLENS_MCP_PORT", format!("{}", port))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -18,11 +20,30 @@ fn http_ai_recommend_with_summary() {
 
     thread::sleep(Duration::from_millis(400));
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(120_000))
+        .build()
+        .expect("client");
+
+    // Wait until server is ready
+    for _ in 0..20 {
+        if let Ok(resp) = client
+            .get(&format!("http://127.0.0.1:{}/schemas/list", port))
+            .send()
+        {
+            if resp.status().is_success() {
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 
     // First, get ai_summary_json
     let sum_resp = client
-        .post("http://127.0.0.1:5178/export/ai_summary_json")
+        .post(&format!(
+            "http://127.0.0.1:{}/export/ai_summary_json",
+            port
+        ))
         .json(&serde_json::json!({"project_path":".","top_n":3}))
         .send();
     assert!(sum_resp.is_ok(), "summary POST should succeed");
@@ -37,7 +58,7 @@ fn http_ai_recommend_with_summary() {
 
     // Then, call recommend with that summary
     let rec_resp = client
-        .post("http://127.0.0.1:5178/ai/recommend")
+        .post(&format!("http://127.0.0.1:{}/ai/recommend", port))
         .json(&serde_json::json!({"project_path":".","json": summary}))
         .send();
     assert!(rec_resp.is_ok(), "recommend POST should succeed");

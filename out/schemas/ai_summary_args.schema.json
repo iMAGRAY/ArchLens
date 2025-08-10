@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AISummaryArgs",
+  "type": "object",
+  "required": [
+    "project_path"
+  ],
+  "properties": {
+    "project_path": {
+      "type": "string"
+    },
+    "top_n": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "max_output_chars": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "etag": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "use_cache": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "cache_ttl_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "force": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  }
+}

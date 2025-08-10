@@ -29,9 +29,9 @@
   ],
   "top_coupling": [
     {"component": "A", "degree": 4},
-    {"component": "B", "degree": 4},
+    {"component": "B", "degree": 3},
     {"component": "C", "degree": 3},
-    {"component": "D", "degree": 3}
+    {"component": "D", "degree": 4}
   ],
   "top_complexity_components": [
     {"component": "C", "type": "Module", "complexity": 9},

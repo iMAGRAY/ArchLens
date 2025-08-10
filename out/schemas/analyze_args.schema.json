@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalyzeArgs",
+  "type": "object",
+  "required": [
+    "project_path"
+  ],
+  "properties": {
+    "project_path": {
+      "type": "string"
+    },
+    "deep": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "detail_level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "max_output_chars": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0.0
+    }
+  }
+}

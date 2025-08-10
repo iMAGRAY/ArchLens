@@ -212,6 +212,15 @@ fn normalize(mut v: serde_json::Value) -> serde_json::Value {
         obj.remove("cycles_top");
     }
     if let Some(summary) = v.get_mut("summary").and_then(|s| s.as_object_mut()) {
+        // Round noisy float fields to 1 decimal for stability
+        for key in ["cohesion_index", "coupling_index"] {
+            if let Some(val) = summary.get_mut(key) {
+                if let Some(f) = val.as_f64() {
+                    let rounded = (f * 10.0).round() / 10.0;
+                    *val = serde_json::Value::Number(serde_json::Number::from_f64(rounded).unwrap());
+                }
+            }
+        }
         if let Some(layers) = summary.get_mut("layers").and_then(|l| l.as_array_mut()) {
             layers.sort_by(|a, b| {
                 a.get("name")
