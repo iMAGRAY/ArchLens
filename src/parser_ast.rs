@@ -305,14 +305,22 @@ impl ParserAST {
     }
 
     #[cfg(feature = "tree_sitter")]
-    fn try_tree_sitter_parse(&self, _file_path: &Path, content: &str, file_type: &FileType) -> Result<Option<Vec<ASTElement>>> {
-        // Минимальный каркас: при поддерживаемом языке возвращаем None при пустом контенте, иначе — пока не реализовано
-        // (дальнейшее наполнение — последующим инкрементом)
-        let supported = matches!(file_type, FileType::Rust | FileType::JavaScript | FileType::TypeScript | FileType::Python);
-        if !supported { return Ok(None); }
+    fn try_tree_sitter_parse(&self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Option<Vec<ASTElement>>> {
+        use tree_sitter::{Parser, Node};
+        // Сейчас реализуем Rust, остальные языки идут по fallback
+        if !matches!(file_type, FileType::Rust) { return Ok(None); }
         if content.trim().is_empty() { return Ok(Some(Vec::new())); }
-        // #INCOMPLETE: Реальный tree-sitter разбор — 6–10 ч (подключение грамматик, обход дерева и маппинг в ASTElement)
-        Ok(None)
+
+        let mut parser = Parser::new();
+        parser.set_language(tree_sitter_rust::language())
+            .map_err(|e| crate::types::AnalysisError::Parse(format!("tree-sitter rust: {e:?}")))?;
+        let tree = match parser.parse(content, None) { Some(t) => t, None => return Ok(None) };
+        let mut cursor = tree.walk();
+
+        let mut elements: Vec<ASTElement> = Vec::new();
+        self.ts_collect_rust_nodes(content, file_path, tree.root_node(), &mut elements)?;
+
+        Ok(Some(elements))
     }
 
     fn parse_file_regex(&self, file_path: &Path, content: &str, file_type: &FileType) -> Result<Vec<ASTElement>> {
@@ -545,6 +553,122 @@ impl ParserAST {
         }
         
         max_level.max(0) as u32
+    }
+}
+
+#[cfg(feature = "tree_sitter")]
+impl ParserAST {
+    fn ts_collect_rust_nodes(&self, content: &str, file_path: &Path, node: tree_sitter::Node, out: &mut Vec<ASTElement>) -> Result<()> {
+        let mut cursor = node.walk();
+        // DFS
+        let mut stack: Vec<tree_sitter::Node> = vec![node];
+        while let Some(n) = stack.pop() {
+            let kind = n.kind();
+            match kind {
+                // Items of interest in rust grammar
+                "function_item" => {
+                    if let Some(el) = self.ts_build_fn_element(content, &n, file_path)? { out.push(el); }
+                },
+                "struct_item" => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Struct)? { out.push(el); } },
+                "enum_item"   => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Enum)? { out.push(el); } },
+                "trait_item"  => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Interface)? { out.push(el); } },
+                "mod_item"    => { if let Some(el) = self.ts_build_named_element(content, &n, file_path, ASTElementType::Module)? { out.push(el); } },
+                "use_declaration" => { if let Some(el) = self.ts_build_import_element(content, &n, file_path)? { out.push(el); } },
+                _ => {}
+            }
+            // push children
+            let mut c = n.walk();
+            for i in 0..n.child_count() { if let Some(ch) = n.child(i) { stack.push(ch); } }
+        }
+        Ok(())
+    }
+
+    fn ts_text<'a>(&self, content: &'a str, node: &tree_sitter::Node) -> &'a str {
+        let range = node.byte_range();
+        let bytes = content.as_bytes();
+        let start = range.start.min(bytes.len());
+        let end = range.end.min(bytes.len());
+        &content[start..end]
+    }
+
+    fn ts_find_child<'a>(&self, node: &'a tree_sitter::Node, kind: &str) -> Option<tree_sitter::Node<'a>> {
+        for i in 0..node.child_count() { if let Some(ch) = node.child(i) { if ch.kind() == kind { return Some(ch); } } }
+        None
+    }
+
+    fn ts_identifier<'a>(&self, node: &'a tree_sitter::Node) -> Option<tree_sitter::Node<'a>> {
+        // rust grammar uses identifier for names of items
+        self.ts_find_child(node, "identifier").or_else(|| self.ts_find_child(node, "type_identifier"))
+    }
+
+    fn ts_visibility(&self, node: &tree_sitter::Node, content: &str) -> String {
+        // presence of "pub" before the name
+        let text = self.ts_text(content, node);
+        if text.trim_start().starts_with("pub") { "public".to_string() } else { "private".to_string() }
+    }
+
+    fn ts_build_named_element(&self, content: &str, node: &tree_sitter::Node, file_path: &Path, etype: ASTElementType) -> Result<Option<ASTElement>> {
+        let id_node = match self.ts_identifier(node) { Some(n) => n, None => return Ok(None) };
+        let name = self.ts_text(content, &id_node).trim().to_string();
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let visibility = self.ts_visibility(node, content);
+        let element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: etype,
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility,
+            parameters: Vec::new(),
+            return_type: None,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        Ok(Some(element))
+    }
+
+    fn ts_build_fn_element(&self, content: &str, node: &tree_sitter::Node, file_path: &Path) -> Result<Option<ASTElement>> {
+        let id_node = match self.ts_identifier(node) { Some(n) => n, None => return Ok(None) };
+        let name = self.ts_text(content, &id_node).trim().to_string();
+        let text = self.ts_text(content, node).to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+        let visibility = self.ts_visibility(node, content);
+
+        // Parameters by substring between first '(' and matching ')'
+        let mut parameters: Vec<String> = Vec::new();
+        if let Some(lp) = text.find('(') { if let Some(rp) = text[lp..].find(')') { let inside = &text[lp+1 .. lp+rp]; parameters = inside.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(); } }
+        // Return type by substring after '->'
+        let return_type = if let Some(arrow) = text.find("->") { Some(text[arrow+2..].split('{').next().unwrap_or("").trim().to_string()) } else { None };
+
+        let mut element = ASTElement {
+            id: uuid::Uuid::new_v4(),
+            name,
+            element_type: ASTElementType::Function,
+            content: text.clone(),
+            start_line: start.row + 1,
+            end_line: end.row + 1,
+            start_column: start.column,
+            end_column: end.column,
+            complexity: 1,
+            visibility,
+            parameters,
+            return_type,
+            children: Vec::new(),
+            parent_id: None,
+            metadata: HashMap::new(),
+        };
+        // complexity from regex indicators
+        let patterns = &self.rust_patterns;
+        element.complexity = self.calculate_complexity(&element.content, patterns);
+        Ok(Some(element))
     }
 }
 
