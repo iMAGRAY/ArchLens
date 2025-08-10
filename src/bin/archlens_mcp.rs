@@ -65,6 +65,15 @@ pub struct RpcError { pub code: i32, pub message: String }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolDescription { pub name: String, pub description: String, pub input_schema: serde_json::Value }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceDescription { pub name: String, pub uri: String, #[serde(skip_serializing_if="Option::is_none")] pub mime: Option<String>, #[serde(skip_serializing_if="Option::is_none")] pub description: Option<String> }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptMessage { pub role: String, pub content: String }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptDescription { pub name: String, pub description: String, pub messages: Vec<PromptMessage> }
+
 #[derive(Clone)]
 struct HttpState;
 
@@ -104,12 +113,18 @@ async fn post_diagram(Json(args): Json<DiagramArgs>) -> Result<Json<serde_json::
     }
 }
 
+async fn get_schemas() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let list = list_schema_resources();
+    Ok(Json(serde_json::json!({"resources": list})))
+}
+
 fn build_http_router() -> Router {
     Router::new()
         .route("/sse/refresh", get(sse_refresh))
         .route("/export/ai_compact", post(post_export))
         .route("/structure/get", post(post_structure))
         .route("/diagram/generate", post(post_diagram))
+        .route("/schemas/list", get(get_schemas))
         .with_state(HttpState)
 }
 
@@ -138,11 +153,54 @@ fn tool_list_schema() -> Vec<ToolDescription> {
     ]
 }
 
+fn list_schema_resources() -> Vec<ResourceDescription> {
+    let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let dir = root.join("out").join("schemas");
+    let mut resources = Vec::new();
+    if let Ok(rd) = fs::read_dir(&dir) {
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let abs = p.canonicalize().unwrap_or(p.clone());
+                let uri = format!("file://{}", abs.to_string_lossy());
+                resources.push(ResourceDescription { name, uri, mime: Some("application/schema+json".into()), description: Some("JSON Schema for tool input".into()) });
+            }
+        }
+    }
+    resources
+}
+
+fn list_prompts() -> Vec<PromptDescription> {
+    vec![
+        PromptDescription {
+            name: "ai.compact.summarize".into(),
+            description: "Summarize AI compact analysis into 5 bullet points".into(),
+            messages: vec![ PromptMessage{ role: "system".into(), content: "You are an expert software architect.".into() },
+                            PromptMessage{ role: "user".into(), content: "Summarize the following analysis into 5 bullets with actionable items.".into() } ]
+        },
+        PromptDescription {
+            name: "graph.explain.cycles".into(),
+            description: "Explain detected cycles and propose fixes".into(),
+            messages: vec![ PromptMessage{ role: "system".into(), content: "You explain architecture issues clearly.".into() },
+                            PromptMessage{ role: "user".into(), content: "Explain cycles and propose refactoring strategies.".into() } ]
+        }
+    ]
+}
+
 fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
     match method {
         "tools/list" => {
             let tools = tool_list_schema();
             Ok(serde_json::json!({"tools": tools}))
+        }
+        "resources/list" => {
+            let resources = list_schema_resources();
+            Ok(serde_json::json!({"resources": resources}))
+        }
+        "prompts/list" => {
+            let prompts = list_prompts();
+            Ok(serde_json::json!({"prompts": prompts}))
         }
         "tools/call" => {
             let obj = params.ok_or("missing params")?;
@@ -171,7 +229,6 @@ fn handle_call(method: &str, params: Option<serde_json::Value>) -> Result<serde_
                     let args: AnalyzeArgs = serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
                     if args.deep.unwrap_or(false) {
-                        // Используем CLI глубокий пайплайн
                         let res = cli::handlers::run_deep_pipeline(path.to_string_lossy().as_ref())
                             .map_err(|e| e.to_string())?;
                         Ok(serde_json::json!({"content":[{"type":"text","text": serde_json::to_string_pretty(&res).unwrap_or_else(|_|"{}".into())}]}))
