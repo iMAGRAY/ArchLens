@@ -10,6 +10,8 @@ use std::thread;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 use std::io::{Read, Write};
+use std::path::Path; // added
+use std::process::Command; // added
 
 use archlens::{ensure_absolute_path, cli::{self, export, diagram, stats}};
 use regex::Regex;
@@ -305,6 +307,36 @@ fn env_test_delay_ms() -> Option<u64> {
     std::env::var("ARCHLENS_TEST_DELAY_MS").ok().and_then(|s| s.parse().ok())
 }
 
+// Recommendation thresholds (configurable via env)
+#[derive(Clone, Copy, Debug)]
+struct RecoThresholds {
+    complexity_avg: f64,
+    coupling_index: f64,
+    cohesion_index: f64,
+    layer_imbalance_pct: u8,
+    high_sev_cats: usize,
+}
+
+fn env_f64(name: &str, default: f64) -> f64 {
+    std::env::var(name).ok().and_then(|s| s.parse().ok()).unwrap_or(default)
+}
+fn env_u8(name: &str, default: u8) -> u8 {
+    std::env::var(name).ok().and_then(|s| s.parse().ok()).unwrap_or(default)
+}
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name).ok().and_then(|s| s.parse().ok()).unwrap_or(default)
+}
+
+fn reco_thresholds_from_env() -> RecoThresholds {
+    RecoThresholds {
+        complexity_avg: env_f64("ARCHLENS_TH_COMPLEXITY_AVG", 8.0),
+        coupling_index: env_f64("ARCHLENS_TH_COUPLING_INDEX", 0.7),
+        cohesion_index: env_f64("ARCHLENS_TH_COHESION_INDEX", 0.3),
+        layer_imbalance_pct: env_u8("ARCHLENS_TH_LAYER_IMBALANCE_PCT", 60),
+        high_sev_cats: env_usize("ARCHLENS_TH_HIGH_SEV_CATS", 2),
+    }
+}
+
 async fn post_export(Json(args): Json<ExportArgs>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let t0 = Instant::now();
     let abspath = ensure_absolute_path(&args.project_path);
@@ -545,6 +577,83 @@ fn content_etag(s: &str) -> String {
 
 fn cache_dir() -> PathBuf { std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("out").join("cache") }
 
+// Project content fingerprint for cache invalidation
+fn git_head_and_dirty(path: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", path.to_string_lossy().as_ref(), "rev-parse", "HEAD"]) 
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let mut head = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if head.is_empty() { return None; }
+    // dirty state
+    if let Ok(status_out) = Command::new("git")
+        .args(["-C", path.to_string_lossy().as_ref(), "status", "--porcelain", "-uno"]) 
+        .output() {
+        if status_out.status.success() && !status_out.stdout.is_empty() {
+            head.push_str("-dirty");
+        }
+    }
+    Some(head)
+}
+
+fn fs_dir_fingerprint(path: &Path) -> String {
+    // Shallow, fast, ignores common build dirs
+    let mut total_files: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut max_mtime: u64 = 0;
+
+    fn is_ignored(p: &Path) -> bool {
+        let ignored = [".git", "target", "node_modules", "dist", "build", ".next", ".venv", "venv"];
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .map(|name| ignored.iter().any(|ig| name.eq_ignore_ascii_case(ig)))
+            .unwrap_or(false)
+    }
+
+    fn walk(dir: &Path, total_files: &mut u64, total_bytes: &mut u64, max_mtime: &mut u64) {
+        if is_ignored(dir) { return; }
+        if let Ok(rd) = fs::read_dir(dir) {
+            for ent in rd.flatten() {
+                let p = ent.path();
+                if is_ignored(&p) { continue; }
+                if let Ok(meta) = ent.metadata() {
+                    if meta.is_dir() {
+                        walk(&p, total_files, total_bytes, max_mtime);
+                    } else if meta.is_file() {
+                        *total_files += 1;
+                        *total_bytes = total_bytes.saturating_add(meta.len());
+                        if let Ok(modified) = meta.modified() {
+                            if let Ok(elapsed) = modified.elapsed() {
+                                // Convert to a decreasing value; use now - elapsed
+                                let now = std::time::SystemTime::now();
+                                if let Ok(nowdur) = now.duration_since(std::time::UNIX_EPOCH) {
+                                    let mtime = nowdur.saturating_sub(elapsed).as_secs();
+                                    if mtime > *max_mtime { *max_mtime = mtime; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    walk(path, &mut total_files, &mut total_bytes, &mut max_mtime);
+    let mut hasher = DefaultHasher::new();
+    total_files.hash(&mut hasher);
+    total_bytes.hash(&mut hasher);
+    max_mtime.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn project_content_fingerprint(path: &Path) -> String {
+    if let Some(head) = git_head_and_dirty(path) {
+        return head;
+    }
+    fs_dir_fingerprint(path)
+}
+
 fn export_cache_key(path: &str, lv: &str, sections: &Option<Vec<String>>, top_n: Option<usize>, max_chars: Option<usize>) -> String {
     let mut elems = vec![path.to_string(), lv.to_string(), format!("top_n={}", top_n.unwrap_or(0)), format!("max={}", max_chars.unwrap_or(0))];
     if let Some(s) = sections {
@@ -552,6 +661,9 @@ fn export_cache_key(path: &str, lv: &str, sections: &Option<Vec<String>>, top_n:
         s2.sort();
         elems.push(format!("sections={}", s2.join("|")));
     }
+    // include project fingerprint
+    let fp = project_content_fingerprint(Path::new(path));
+    elems.push(format!("fp={}", fp));
     let joined = elems.join("::");
     let mut h = DefaultHasher::new();
     joined.hash(&mut h);
@@ -708,6 +820,10 @@ fn get_prompt_by_name(name: &str) -> Option<PromptDescription> {
 }
 
 fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Value>, focus_opt: Option<&str>) -> serde_json::Value {
+    compute_recommendations_with_thresholds(project_path, json_opt, focus_opt, &reco_thresholds_from_env())
+}
+
+fn compute_recommendations_with_thresholds(project_path: &str, json_opt: Option<&serde_json::Value>, focus_opt: Option<&str>, th: &RecoThresholds) -> serde_json::Value {
     let mut recs: Vec<serde_json::Value> = Vec::new();
     let focus = focus_opt.unwrap_or("");
     let json = json_opt.cloned().unwrap_or(serde_json::json!({}));
@@ -752,30 +868,29 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
             "why": "High-severity validator problems present; drill down into categories and top impacted components."
         }));
     }
-    // Layer imbalance: if крупнейший слой > 60% компонентов, показать слои
-    if components_total > 0 && max_layer * 100 / components_total >= 60 {
+    // Layer imbalance
+    if components_total > 0 && (max_layer * 100 / components_total) as u8 >= th.layer_imbalance_pct {
         recs.push(serde_json::json!({
             "tool":"export.ai_compact",
             "arguments": {"project_path": project_path, "detail_level":"summary","sections":["layers","problems_validated"], "max_output_chars": 14000, "use_cache": true},
             "why": "Layer imbalance detected; review layer distribution and associated problems."
         }));
     }
-    if coupling_index > 0.7 || cohesion_index < 0.3 || top_coupling_len > 0 {
+    if coupling_index > th.coupling_index || cohesion_index < th.cohesion_index || top_coupling_len > 0 {
         recs.push(serde_json::json!({
             "tool":"export.ai_compact",
             "arguments": {"project_path": project_path, "detail_level":"summary","sections":["cycles","top_coupling"], "top_n": 10, "max_output_chars": 18000, "use_cache": true},
             "why": "Coupling issues indicated; review cycles and top hub components to target decoupling."
         }));
     }
-    if complexity_avg > 8.0 {
+    if complexity_avg > th.complexity_avg {
         recs.push(serde_json::json!({
             "tool":"export.ai_compact",
             "arguments": {"project_path": project_path, "detail_level":"summary","sections":["top_complexity_components"], "top_n": 10, "max_output_chars": 16000, "use_cache": true},
             "why": "High average complexity; inspect top complex components for refactoring opportunities."
         }));
     }
-    // If many high-severity categories, suggest refactor plan prompt
-    if high_sev_cats >= 2 {
+    if high_sev_cats >= th.high_sev_cats {
         recs.push(serde_json::json!({
             "prompt":"ai.refactor.plan",
             "why": "Multiple high-severity categories detected; propose a pragmatic, risk-aware refactoring plan."
@@ -802,7 +917,12 @@ fn compute_recommendations(project_path: &str, json_opt: Option<&serde_json::Val
 #[cfg(test)]
 mod tests {
     use super::compute_recommendations;
+    use super::compute_recommendations_with_thresholds;
+    use super::RecoThresholds;
+    use super::export_cache_key;
     use serde_json::json;
+    use std::fs;
+    use std::path::PathBuf;
 
     fn tools_from(rec: &serde_json::Value) -> Vec<String> {
         rec.get("recommendations")
@@ -854,6 +974,35 @@ mod tests {
         let res = compute_recommendations(".", Some(&mock), None);
         let tools = tools_from(&res);
         assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn recommend_top_complexity_when_high_avg_with_custom_threshold() {
+        let mock = json!({
+            "summary": {"complexity_avg": 6.5, "coupling_index": 0.2, "cohesion_index": 0.8},
+            "cycles_top": [],
+            "problems_validated": []
+        });
+        let th = RecoThresholds { complexity_avg: 6.0, coupling_index: 0.7, cohesion_index: 0.3, layer_imbalance_pct: 60, high_sev_cats: 2 };
+        let res = compute_recommendations_with_thresholds(".", Some(&mock), None, &th);
+        let tools = tools_from(&res);
+        assert!(tools.iter().any(|t| t == "export.ai_compact"));
+    }
+
+    #[test]
+    fn cache_key_changes_on_fs_change() {
+        let dir = PathBuf::from("out/test_cache_tmp");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // initial file
+        fs::write(dir.join("a.txt"), b"hello").unwrap();
+        let p = dir.canonicalize().unwrap();
+        let k1 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        // change FS: add file to ensure different fingerprint
+        fs::write(dir.join("b.txt"), b"world!!! world!!!").unwrap();
+        let k2 = super::export_cache_key(p.to_string_lossy().as_ref(), "summary", &None, Some(5), Some(12345));
+        assert_ne!(k1, k2, "cache key must change when project content changes");
+        let _ = fs::remove_dir_all(&dir);
     }
 }
 
