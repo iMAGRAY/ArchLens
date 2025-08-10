@@ -472,15 +472,93 @@ async fn get_presets() -> Result<Json<serde_json::Value>, axum::http::StatusCode
 }
 
 async fn get_recommendations(Json(payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    // very light heuristic: choose preset by detail_level or requested focus
+    // Analyze provided minimal JSON summary (from export.ai_summary_json) and propose next best MCP calls
+    let mut recs: Vec<serde_json::Value> = Vec::new();
+    let project_path = payload.get("project_path").and_then(|v| v.as_str()).unwrap_or("");
     let focus = payload.get("focus").and_then(|v| v.as_str()).unwrap_or("");
-    let rec = if focus.contains("cycle") { "cycles_focus" } else if focus.contains("plan") { "refactor_plan" } else { "health_check" };
-    let file = presets_dir().join(format!("{}.json", rec));
-    if let Ok(text) = fs::read_to_string(&file) {
-        Ok(Json(serde_json::json!({"preset": rec, "arguments": serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::json!({})) })))
-    } else {
-        Ok(Json(serde_json::json!({"preset": rec})))
+    let json = payload.get("json").cloned().unwrap_or(serde_json::json!({}));
+
+    // If no json provided, suggest initial summary call
+    if json.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        recs.push(serde_json::json!({
+            "tool":"export.ai_summary_json",
+            "arguments": {"project_path": project_path, "top_n": 5, "max_output_chars": 20000, "use_cache": true},
+            "why": "Start with minimal structured facts (summary/problems/cycles) to minimize tokens."
+        }));
+        // Also suggest health-check preset for compact markdown if desired
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary","sections":["summary","problems_validated","cycles"], "top_n": 5, "max_output_chars": 15000, "use_cache": true},
+            "why": "Compact markdown view for human-readable summary if needed."
+        }));
+        return Ok(Json(serde_json::json!({"status":"ok","recommendations": recs})));
     }
+
+    // Heuristics based on JSON content
+    let cycles_count = json.get("cycles_top").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let top_coupling_len = json.get("top_coupling").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let problems = json.get("problems_validated").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let high_sev = problems.iter().any(|p| p.get("severity").and_then(|s| s.get("H")).and_then(|h| h.as_u64()).unwrap_or(0) > 0);
+    let complexity_avg = json.get("summary").and_then(|s| s.get("complexity_avg")).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let coupling_index = json.get("summary").and_then(|s| s.get("coupling_index")).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let cohesion_index = json.get("summary").and_then(|s| s.get("cohesion_index")).and_then(|x| x.as_f64()).unwrap_or(1.0);
+
+    // If cycles detected, propose graph.build first
+    if cycles_count > 0 {
+        recs.push(serde_json::json!({
+            "tool":"graph.build",
+            "arguments": {"project_path": project_path, "detail_level":"summary","max_output_chars": 15000},
+            "why": "Detected cycles; a mermaid graph helps visualize and locate problematic dependencies quickly."
+        }));
+    }
+
+    // If high severity problems, dive into validated problems
+    if high_sev {
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary","sections":["problems_validated"], "top_n": 10, "max_output_chars": 20000, "use_cache": true},
+            "why": "High-severity validator problems present; drill down into categories and top impacted components."
+        }));
+    }
+
+    // If high coupling or low cohesion, focus on coupling/structure
+    if coupling_index > 0.7 || cohesion_index < 0.3 || top_coupling_len > 0 {
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary","sections":["cycles","top_coupling"], "top_n": 10, "max_output_chars": 18000, "use_cache": true},
+            "why": "Coupling issues indicated; review cycles and top hub components to target decoupling."
+        }));
+    }
+
+    // If complexity high, look at top complexity components
+    if complexity_avg > 8.0 { // heuristic threshold
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary","sections":["top_complexity_components"], "top_n": 10, "max_output_chars": 16000, "use_cache": true},
+            "why": "High average complexity; inspect top complex components for refactoring opportunities."
+        }));
+    }
+
+    // If user focus provided, append a matching preset as last step
+    if !focus.is_empty() {
+        let preset = if focus.contains("cycle") { "cycles_focus" } else if focus.contains("plan") { "refactor_plan" } else { "health_check" };
+        recs.push(serde_json::json!({
+            "tool":"export.ai_compact",
+            "arguments": {"project_path": project_path, "detail_level":"summary"},
+            "why": format!("User focus suggests preset '{}'.", preset)
+        }));
+    }
+
+    if recs.is_empty() {
+        // Fallback recommendation
+        recs.push(serde_json::json!({
+            "tool":"export.ai_summary_json",
+            "arguments": {"project_path": project_path, "top_n": 5, "max_output_chars": 20000, "use_cache": true},
+            "why": "Fallback to structured summary to guide further steps."
+        }));
+    }
+
+    Ok(Json(serde_json::json!({"status":"ok","recommendations": recs})))
 }
 
 fn build_http_router() -> Router {
