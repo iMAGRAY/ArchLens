@@ -476,6 +476,19 @@ fn env_timeout_ms() -> u64 {
         .unwrap_or(60_000)
 }
 
+fn env_bool(name: &str, default: bool) -> bool {
+    match std::env::var(name) {
+        Ok(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "y" | "on" => true,
+            "0" | "false" | "no" | "n" | "off" => false,
+            _ => default,
+        },
+        Err(_) => default,
+    }
+}
+
+fn env_one_shot() -> bool { env_bool("ARCHLENS_ONE_SHOT", false) }
+
 fn env_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -1750,6 +1763,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     let stdio = tokio::spawn(async move {
+        let one_shot_flag = env_one_shot();
         while let Some(line) = rx_lines.recv().await {
             if line.trim().is_empty() {
                 continue;
@@ -1795,6 +1809,7 @@ async fn main() -> anyhow::Result<()> {
                                                 if !is_notification {
                                                     write_json_line(id_opt.clone().unwrap(), Some(val), None)
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                             Ok(Err(msg)) => {
                                                 if !is_notification {
@@ -1804,6 +1819,7 @@ async fn main() -> anyhow::Result<()> {
                                                         Some(RpcError { code: -32603, message: msg }),
                                                     )
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                             Err(e) => {
                                                 if !is_notification {
@@ -1813,6 +1829,7 @@ async fn main() -> anyhow::Result<()> {
                                                         Some(RpcError { code: -32603, message: format!("join error: {}", e) }),
                                                     )
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                         },
                                         Err(_) => write_json_line(
@@ -1824,6 +1841,7 @@ async fn main() -> anyhow::Result<()> {
                                             }),
                                         ),
                                     }
+                                    if one_shot_flag && !is_notification { std::process::exit(0); }
                                 }
                             }
                         }
@@ -1836,11 +1854,13 @@ async fn main() -> anyhow::Result<()> {
                                 Ok(val) => write_json_line(id, Some(val), None),
                                 Err(msg) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError { code: -32603, message: msg })),
                             }
+                            if one_shot_flag { std::process::exit(0); }
                         }
                     }
                 }
                 Err(_e) => {
                     write_json_line(serde_json::json!(null), Option::<serde_json::Value>::None, Some(RpcError { code: -32700, message: "parse error".into() }));
+                    if one_shot_flag { std::process::exit(0); }
                 }
             }
         }
