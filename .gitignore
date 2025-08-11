@@ -104,3 +104,6 @@ architecture_reports/
 *.msi
 *.exe
 !src-tauri/target/release/*.exe
+
+# Runtime output
+out/

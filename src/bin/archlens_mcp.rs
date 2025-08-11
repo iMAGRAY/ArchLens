@@ -1,10 +1,3 @@
-use axum::{
-    extract::State,
-    response::sse::{Event, Sse},
-    routing::{get, post},
-    Json, Router,
-};
-use futures_util::Stream;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -13,20 +6,20 @@ use std::io::Read; // needed for cache_get
 use std::path::Path; // added
 use std::process::Command;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
     fs,
     io::{self, BufRead, Write},
     path::PathBuf,
 };
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream; // added
+
 
 use archlens::{
     cli::{self, diagram, export, stats},
     ensure_absolute_path,
 };
 use regex::Regex;
+use std::cmp::Reverse;
 
 // =============== Types ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -156,6 +149,23 @@ pub struct ToolDescription {
     pub schema_uri: Option<String>,
 }
 
+// Helper: accept both underscore and dotted tool names; normalize to dotted for internal matching
+fn normalize_tool_name(name: &str) -> String {
+    match name {
+        // underscore aliases -> dotted canonical
+        "arch_refresh" => "arch.refresh",
+        "graph_build" => "graph.build",
+        "export_ai_compact" => "export.ai_compact",
+        "export_ai_summary_json" => "export.ai_summary_json",
+        "structure_get" => "structure.get",
+        "analyze_project" => "analyze.project",
+        "ai_recommend" => "ai.recommend",
+        // already dotted or unknown -> pass-through
+        _ => name,
+    }
+    .to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceDescription {
@@ -200,129 +210,6 @@ pub struct AIRecommendArgs {
     pub json: Option<serde_json::Value>,
     #[serde(default)]
     pub focus: Option<String>,
-}
-
-#[derive(Clone)]
-struct HttpState;
-
-// =============== HTTP (Streamable) ===============
-async fn sse_refresh(
-    State(_): State<HttpState>,
-) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
-    let (tx, rx) = mpsc::channel::<Result<Event, axum::Error>>(8);
-    tokio::spawn(async move {
-        let _ = tx
-            .send(Ok(Event::default().data("event: refresh-start")))
-            .await;
-        let _ = tx
-            .send(Ok(Event::default().data("event: refresh-done")))
-            .await;
-    });
-    Sse::new(ReceiverStream::new(rx))
-}
-
-async fn http_tools_list(
-    State(_): State<HttpState>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let tools = tool_list_schema();
-    Ok(Json(serde_json::json!({"tools": tools})))
-}
-
-async fn http_tools_call(
-    State(_): State<HttpState>,
-    Json(obj): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if name.is_empty() {
-        return Err(axum::http::StatusCode::BAD_REQUEST);
-    }
-    let is_heavy = matches!(
-        name.as_str(),
-        "export.ai_compact" | "structure.get" | "graph.build" | "analyze.project"
-    );
-    if is_heavy {
-        let timeout = Duration::from_millis(env_timeout_ms());
-        let payload = obj.clone();
-        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
-        match tokio::time::timeout(timeout, handle).await {
-            Ok(joined) => match joined {
-                Ok(Ok(val)) => Ok(Json(val)),
-                Ok(Err(_e)) => Err(axum::http::StatusCode::BAD_REQUEST),
-                Err(_join) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-            },
-            Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-        }
-    } else {
-        match handle_call("tools/call", Some(obj)) {
-            Ok(val) => Ok(Json(val)),
-            Err(_e) => Err(axum::http::StatusCode::BAD_REQUEST),
-        }
-    }
-}
-
-async fn sse_tools_call(
-    State(_): State<HttpState>,
-    Json(obj): Json<serde_json::Value>,
-) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
-    let (tx, rx) = mpsc::channel::<Result<Event, axum::Error>>(8);
-    tokio::spawn(async move {
-        let _ = tx
-            .send(Ok(Event::default().event("start").data("tools-call-start")))
-            .await;
-        let timeout = Duration::from_millis(env_timeout_ms());
-        let payload = obj.clone();
-        let handle = tokio::task::spawn_blocking(move || handle_call("tools/call", Some(payload)));
-        let res = tokio::time::timeout(timeout, handle).await;
-        match res {
-            Ok(joined) => match joined {
-                Ok(Ok(val)) => {
-                    let text = serde_json::to_string(&val).unwrap_or("{}".into());
-                    let _ = tx
-                        .send(Ok(Event::default().event("result").data(text)))
-                        .await;
-                    let _ = tx.send(Ok(Event::default().event("done").data("ok"))).await;
-                }
-                Ok(Err(e)) => {
-                    let _ = tx.send(Ok(Event::default().event("error").data(e))).await;
-                }
-                Err(e) => {
-                    let _ = tx
-                        .send(Ok(Event::default()
-                            .event("error")
-                            .data(format!("join error: {}", e))))
-                        .await;
-                }
-            },
-            Err(_) => {
-                let _ = tx
-                    .send(Ok(Event::default().event("error").data("timeout")))
-                    .await;
-            }
-        }
-    });
-    Sse::new(ReceiverStream::new(rx))
-}
-
-fn build_http_router() -> Router {
-    Router::new()
-        .route("/sse/refresh", get(sse_refresh))
-        .route("/export/ai_compact", post(post_export))
-        .route("/export/ai_summary_json", post(post_export_summary))
-        .route("/structure/get", post(post_structure))
-        .route("/diagram/generate", post(post_diagram))
-        .route("/schemas/list", get(get_schemas))
-        .route("/schemas/read", post(post_schema_read))
-        .route("/presets/list", get(get_presets))
-        .route("/ai/recommend", post(get_recommendations))
-        // Official MCP-style HTTP endpoints
-        .route("/tools/list", post(http_tools_list))
-        .route("/tools/call", post(http_tools_call))
-        .route("/tools/call/stream", post(sse_tools_call))
-        .with_state(HttpState)
 }
 
 // Formatting limits
@@ -589,6 +476,40 @@ fn env_timeout_ms() -> u64 {
         .unwrap_or(60_000)
 }
 
+fn env_bool(name: &str, default: bool) -> bool {
+    match std::env::var(name) {
+        Ok(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "y" | "on" => true,
+            "0" | "false" | "no" | "n" | "off" => false,
+            _ => default,
+        },
+        Err(_) => default,
+    }
+}
+
+fn env_one_shot() -> bool { env_bool("ARCHLENS_ONE_SHOT", false) }
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
+}
+
+fn heavy_timeout_ms(tool: &str) -> u64 {
+    match tool {
+        // Heaviest: allow longer default (can be overridden by ARCHLENS_TIMEOUT_SUMMARY_MS)
+        "export.ai_summary_json" => env_u64("ARCHLENS_TIMEOUT_SUMMARY_MS", 300_000),
+        // Respect per-tool overrides if provided, otherwise fall back to global
+        "export.ai_compact" => env_u64("ARCHLENS_TIMEOUT_COMPACT_MS", env_timeout_ms()),
+        "graph.build" => env_u64("ARCHLENS_TIMEOUT_GRAPH_MS", 300_000),
+        "analyze.project" => env_u64("ARCHLENS_TIMEOUT_ANALYZE_MS", env_timeout_ms()),
+        "structure.get" => env_u64("ARCHLENS_TIMEOUT_STRUCTURE_MS", env_timeout_ms()),
+        "ai.recommend" => env_u64("ARCHLENS_TIMEOUT_RECO_MS", env_timeout_ms()),
+        _ => env_timeout_ms(),
+    }
+}
+
 fn env_cache_ttl_ms() -> u64 {
     std::env::var("ARCHLENS_CACHE_TTL_MS")
         .ok()
@@ -602,12 +523,6 @@ fn env_test_delay_ms() -> Option<u64> {
         .and_then(|s| s.parse().ok())
 }
 
-fn env_enable_http() -> bool {
-    matches!(
-        std::env::var("ARCHLENS_ENABLE_HTTP").ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("on")
-    )
-}
 
 // Recommendation thresholds (configurable via env)
 #[derive(Clone, Copy, Debug)]
@@ -648,275 +563,81 @@ fn reco_thresholds_from_env() -> RecoThresholds {
     }
 }
 
-async fn post_export(
-    Json(args): Json<ExportArgs>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let t0 = Instant::now();
-    let abspath = ensure_absolute_path(&args.project_path);
-    let lv = level(&args.detail_level).to_string();
-    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
-    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
-    let key = export_cache_key(
-        &abspath.to_string_lossy(),
-        &lv,
-        &args.sections,
-        args.top_n,
-        args.max_output_chars,
-    );
+fn env_str(name: &str, default: &str) -> String {
+    std::env::var(name).unwrap_or_else(|_| default.to_string())
+}
 
-    if use_cache {
-        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
-            if args.etag.as_deref() == Some(&etag_cached) {
-                tracing::info!(
-                    target = "archlens_mcp",
-                    action = "export_ai_compact_cache",
-                    hit = true,
-                    not_modified = true
-                );
-                return Ok(Json(
-                    serde_json::json!({"status":"not_modified","etag": etag_cached}),
-                ));
-            } else {
-                tracing::info!(
-                    target = "archlens_mcp",
-                    action = "export_ai_compact_cache",
-                    hit = true,
-                    not_modified = false
-                );
-                return Ok(Json(
-                    serde_json::json!({"status":"ok","etag": etag_cached, "output": output_cached}),
-                ));
-            }
-        }
+fn env_summary_mode() -> String { // "auto" | "fast" | "full"
+    let m = env_str("ARCHLENS_SUMMARY_MODE", "auto");
+    match m.as_str() {
+        "fast" | "full" => m,
+        _ => "auto".to_string(),
     }
-
-    let timeout = Duration::from_millis(env_timeout_ms());
-    let delay = env_test_delay_ms();
-    let path_clone = abspath.clone();
-    let lv_clone = lv.clone();
-    let sections_clone = args.sections.clone();
-    let topn_clone = args.top_n;
-    let max_clone = args.max_output_chars;
-    let handle = tokio::task::spawn_blocking(move || {
-        if let Some(ms) = delay {
-            thread::sleep(Duration::from_millis(ms));
-        }
-        export::generate_ai_compact(path_clone.to_string_lossy().as_ref()).map(|md| {
-            format_export_markdown_with_controls(
-                md,
-                &lv_clone,
-                &sections_clone,
-                topn_clone,
-                max_clone,
-            )
-        })
-    });
-    let out = match tokio::time::timeout(timeout, handle).await {
-        Ok(joined) => match joined {
-            Ok(Ok(txt)) => {
-                let etag = content_etag(&txt);
-                if args.use_cache.unwrap_or(true) {
-                    cache_put(&key, &etag, &txt);
-                }
-                if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(
-                        serde_json::json!({"status":"not_modified","etag": etag}),
-                    ))
-                } else {
-                    Ok(Json(
-                        serde_json::json!({"status":"ok","etag": etag, "output": txt}),
-                    ))
-                }
-            }
-            _ => Err(axum::http::StatusCode::BAD_REQUEST),
-        },
-        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-    };
-    tracing::info!(target: "archlens_mcp", action = "export_ai_compact", ms = %t0.elapsed().as_millis());
-    out
 }
 
-async fn post_export_summary(
-    Json(args): Json<AISummaryArgs>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let t0 = Instant::now();
-    let abspath = ensure_absolute_path(&args.project_path);
-    let use_cache = args.use_cache.unwrap_or(true) && !args.force.unwrap_or(false);
-    let ttl = args.cache_ttl_ms.unwrap_or_else(env_cache_ttl_ms);
-    let key = export_cache_key(
-        &abspath.to_string_lossy(),
-        "json_summary",
-        &Some(vec!["__json_summary__".into()]),
-        args.top_n,
-        args.max_output_chars,
-    );
-    if use_cache {
-        if let Some((etag_cached, output_cached)) = cache_get(&key, ttl) {
-            if args.etag.as_deref() == Some(&etag_cached) {
-                return Ok(Json(
-                    serde_json::json!({"status":"not_modified","etag": etag_cached}),
-                ));
-            } else {
-                return Ok(Json(
-                    serde_json::json!({"status":"ok","etag": etag_cached, "json": serde_json::from_str::<serde_json::Value>(&output_cached).unwrap_or(serde_json::json!({})) }),
-                ));
-            }
-        }
+fn env_summary_auto_file_threshold() -> usize {
+    env_usize("ARCHLENS_SUMMARY_AUTO_FILES", 2000)
+}
+
+fn build_fast_ai_summary_json(project_path: &str, top_n: Option<usize>) -> Result<serde_json::Value, String> {
+    // Cheap structure scan (no AST, no file reads)
+    let st = stats::get_project_structure(project_path).map_err(|e| e.to_string())?;
+    // Layers frequency
+    use std::collections::HashMap;
+    let mut layer_counts: HashMap<String, usize> = HashMap::new();
+    for f in &st.files {
+        let layer = crate::cli::stats::determine_layer(std::path::Path::new(&f.path));
+        *layer_counts.entry(layer).or_insert(0) += 1;
     }
-    let timeout = Duration::from_millis(env_timeout_ms());
-    let delay = env_test_delay_ms();
-    let path_clone = abspath.clone();
-    let topn = args.top_n;
-    let handle = tokio::task::spawn_blocking(move || {
-        if let Some(ms) = delay {
-            thread::sleep(Duration::from_millis(ms));
-        }
-        let graph = build_graph_for_path(path_clone.to_string_lossy().as_ref())?;
-        let exporter = archlens::exporter::Exporter::new();
-        let mut json = exporter
-            .export_to_ai_summary_json(&graph)
-            .map_err(|e| e.to_string())?;
-        json = trim_ai_summary_json(json, topn);
-        let _txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
-        Ok::<serde_json::Value, String>(json)
-    });
-    let out = match tokio::time::timeout(timeout, handle).await {
-        Ok(joined) => match joined {
-            Ok(Ok(val)) => {
-                let txt = serde_json::to_string_pretty(&val).unwrap_or("{}".into());
-                let etag = content_etag(&txt);
-                if args.use_cache.unwrap_or(true) {
-                    cache_put(&key, &etag, &txt);
-                }
-                if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(
-                        serde_json::json!({"status":"not_modified","etag": etag}),
-                    ))
-                } else {
-                    let txt = clamp_text_with_limit(&txt, args.max_output_chars);
-                    Ok(Json(
-                        serde_json::json!({"status":"ok","etag": etag, "json": serde_json::from_str::<serde_json::Value>(&txt).unwrap_or(val)}),
-                    ))
-                }
-            }
-            _ => Err(axum::http::StatusCode::BAD_REQUEST),
-        },
-        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-    };
-    tracing::info!(target: "archlens_mcp", action = "export_ai_summary_json", ms = %t0.elapsed().as_millis());
-    out
-}
-
-async fn post_structure(
-    Json(args): Json<StructureArgs>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let t0 = Instant::now();
-    let path = ensure_absolute_path(&args.project_path);
-    let lv = level(&args.detail_level).to_string();
-    let timeout = Duration::from_millis(env_timeout_ms());
-    let delay = env_test_delay_ms();
-    let p = path.clone();
-    let handle = tokio::task::spawn_blocking(move || {
-        if let Some(ms) = delay {
-            thread::sleep(Duration::from_millis(ms));
-        }
-        stats::get_project_structure(p.to_string_lossy().as_ref())
-    });
-    let out = match tokio::time::timeout(timeout, handle).await {
-        Ok(joined) => match joined {
-            Ok(Ok(structure)) => {
-                let text =
-                    format_structure_result(path.to_string_lossy().as_ref(), &structure, &lv);
-                let text = clamp_text_with_limit(&text, args.max_output_chars);
-                let etag = content_etag(&text);
-                if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(
-                        serde_json::json!({"status":"not_modified","etag": etag}),
-                    ))
-                } else {
-                    Ok(Json(
-                        serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": text}]}),
-                    ))
-                }
-            }
-            _ => Err(axum::http::StatusCode::BAD_REQUEST),
-        },
-        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-    };
-    tracing::info!(target: "archlens_mcp", action = "structure_get", ms = %t0.elapsed().as_millis());
-    out
-}
-
-async fn post_diagram(
-    Json(args): Json<DiagramArgs>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let t0 = Instant::now();
-    let path = ensure_absolute_path(&args.project_path);
-    let kind = args.diagram_type.as_deref().unwrap_or("mermaid");
-    if kind != "mermaid" {
-        return Err(axum::http::StatusCode::BAD_REQUEST);
-    }
-    let lv = level(&args.detail_level).to_string();
-    let timeout = Duration::from_millis(env_timeout_ms());
-    let delay = env_test_delay_ms();
-    let p = path.clone();
-    let handle = tokio::task::spawn_blocking(move || {
-        if let Some(ms) = delay {
-            thread::sleep(Duration::from_millis(ms));
-        }
-        let res = cli::handlers::build_graph_mermaid(p.to_string_lossy().as_ref())
-            .or_else(|_| diagram::generate_mermaid_diagram(p.to_string_lossy().as_ref()));
-        res
-    });
-    let out = match tokio::time::timeout(timeout, handle).await {
-        Ok(joined) => match joined {
-            Ok(Ok(mmd)) => {
-                let text = format_diagram_text(mmd, path.to_string_lossy().as_ref(), &lv);
-                let text = clamp_text_with_limit(&text, args.max_output_chars);
-                let etag = content_etag(&text);
-                if args.etag.as_deref() == Some(&etag) {
-                    Ok(Json(
-                        serde_json::json!({"status":"not_modified","etag": etag}),
-                    ))
-                } else {
-                    Ok(Json(
-                        serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": text}]}),
-                    ))
-                }
-            }
-            _ => Err(axum::http::StatusCode::BAD_REQUEST),
-        },
-        Err(_) => Err(axum::http::StatusCode::REQUEST_TIMEOUT),
-    };
-    tracing::info!(target: "archlens_mcp", action = "diagram_generate", ms = %t0.elapsed().as_millis());
-    out
-}
-
-async fn get_schemas() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let list = list_schema_resources();
-    Ok(Json(serde_json::json!({"resources": list})))
-}
-
-async fn get_presets() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let resources = list_schema_resources()
+    let mut layers: Vec<(String, usize)> = layer_counts.into_iter().collect();
+    layers.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let layers_json: Vec<serde_json::Value> = layers
         .into_iter()
-        .filter(|r| r.description.as_deref() == Some("AI preset (recommended tool args)"))
-        .collect::<Vec<_>>();
-    Ok(Json(serde_json::json!({"resources": resources})))
+        .take(8)
+        .map(|(name, count)| serde_json::json!({"name": name, "count": count}))
+        .collect();
+
+    // Top components by file size (proxy for complexity)
+    let mut files_sorted = st.files.clone();
+    files_sorted.sort_by(|a, b| b.size.cmp(&a.size).then(a.name.cmp(&b.name)));
+    let n = top_n.unwrap_or(10);
+    let top_complexity_components: Vec<serde_json::Value> = files_sorted
+        .into_iter()
+        .take(n)
+        .map(|f| {
+            serde_json::json!({
+                "component": f.name,
+                "type": "File",
+                "complexity": (f.size / 100).max(1) // rough proxy
+            })
+        })
+        .collect();
+
+    let summary = serde_json::json!({
+        "components": st.files.len(),
+        "relations": 0,
+        "complexity_avg": 0.0,
+        "coupling_index": 0.0,
+        "cohesion_index": 1.0,
+        "cyclomatic_complexity": 0,
+        "layers": layers_json,
+    });
+
+    Ok(serde_json::json!({
+        "summary": summary,
+        "problems_validated": [],
+        "cycles_top": [],
+        "top_coupling": [],
+        "top_complexity_components": top_complexity_components
+    }))
 }
 
-async fn get_recommendations(
-    Json(payload): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let project_path = payload
-        .get("project_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(".");
-    let json_opt = payload.get("json");
-    let focus_opt = payload.get("focus").and_then(|v| v.as_str());
-    let result = compute_recommendations(project_path, json_opt, focus_opt);
-    Ok(Json(result))
-}
+
+
+
+
+
+
 
 // =============== STDIO JSON-RPC ===============
 fn write_json_line<T: Serialize>(
@@ -960,43 +681,43 @@ fn tool_list_schema() -> Vec<ToolDescription> {
 
     vec![
         ToolDescription {
-            name: "arch.refresh".into(),
+            name: "arch_refresh".into(),
             description: "Refresh analysis context (noop placeholder)".into(),
             input_schema: serde_json::json!({"type":"object"}),
             schema_uri: None,
         },
         ToolDescription {
-            name: "graph.build".into(),
+            name: "graph_build".into(),
             description: "Build architecture diagram (mermaid)".into(),
             input_schema: serde_json::to_value(diagram_schema.schema).unwrap(),
             schema_uri: to_uri("diagram_args"),
         },
         ToolDescription {
-            name: "export.ai_compact".into(),
+            name: "export_ai_compact".into(),
             description: "Export AI compact analysis".into(),
             input_schema: serde_json::to_value(export_schema.schema).unwrap(),
             schema_uri: to_uri("export_args"),
         },
         ToolDescription {
-            name: "export.ai_summary_json".into(),
+            name: "export_ai_summary_json".into(),
             description: "Export minimal structured JSON summary for AI (facts only).".into(),
             input_schema: serde_json::to_value(ai_summary_schema.schema).unwrap(),
             schema_uri: to_uri("ai_summary_args"),
         },
         ToolDescription {
-            name: "structure.get".into(),
+            name: "structure_get".into(),
             description: "Get project structure".into(),
             input_schema: serde_json::to_value(structure_schema.schema).unwrap(),
             schema_uri: to_uri("structure_args"),
         },
         ToolDescription {
-            name: "analyze.project".into(),
+            name: "analyze_project".into(),
             description: "Analyze project (shallow or deep)".into(),
             input_schema: serde_json::to_value(analyze_schema.schema).unwrap(),
             schema_uri: to_uri("analyze_args"),
         },
         ToolDescription {
-            name: "ai.recommend".into(),
+            name: "ai_recommend".into(),
             description: "Suggest next best MCP calls based on ai_summary_json.".into(),
             input_schema: serde_json::to_value(ai_recommend_schema.schema).unwrap(),
             schema_uri: to_uri("ai_recommend_args"),
@@ -1724,15 +1445,16 @@ fn handle_call(
         }
         "tools/call" => {
             let obj = params.ok_or("missing params")?;
-            let name = obj
+            let name_raw = obj
                 .get("name")
                 .and_then(|v| v.as_str())
                 .ok_or("missing name")?;
+            let name = normalize_tool_name(name_raw);
             let args = obj
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
-            match name {
+            match name.as_str() {
                 "export.ai_compact" => {
                     let args: ExportArgs =
                         serde_json::from_value(args).map_err(|e| e.to_string())?;
@@ -1762,11 +1484,28 @@ fn handle_call(
                         }
                     }
 
-                    let out = export::generate_ai_compact(abspath.to_string_lossy().as_ref())
-                        .map_err(|e| e.to_string())?;
+                    // Possibly use fast path for huge repos
+                    let mode = env_compact_mode();
+                    let lv = level(&args.detail_level).to_string();
+                    let use_fast = if mode == "fast" {
+                        true
+                    } else if mode == "auto" {
+                        if let Ok(st) = stats::get_project_structure(abspath.to_string_lossy().as_ref()) {
+                            st.total_files >= env_compact_auto_file_threshold()
+                        } else { false }
+                    } else { false };
+
+                    let out = if use_fast {
+                        let qs = quick_scan_approx(abspath.to_string_lossy().as_ref(), env_fast_budget_ms(), env_fast_max_files(), args.top_n.unwrap_or(10));
+                        fast_compact_markdown(abspath.to_string_lossy().as_ref(), &qs, &lv, args.max_output_chars)
+                    } else {
+                        export::generate_ai_compact(abspath.to_string_lossy().as_ref())
+                            .map_err(|e| e.to_string())?
+                    };
+
                     let txt = format_export_markdown_with_controls(
                         out,
-                        level(&args.detail_level),
+                        &lv,
                         &args.sections,
                         args.top_n,
                         args.max_output_chars,
@@ -1809,11 +1548,25 @@ fn handle_call(
                             }
                         }
                     }
-                    let graph = build_graph_for_path(abspath.to_string_lossy().as_ref())?;
-                    let exporter = archlens::exporter::Exporter::new();
-                    let mut json = exporter
-                        .export_to_ai_summary_json(&graph)
-                        .map_err(|e| e.to_string())?;
+                    // Choose mode: fast/auto/full
+                    let mode = env_summary_mode();
+                    let mut use_fast = mode == "fast";
+                    if mode == "auto" {
+                        if let Ok(st) = stats::get_project_structure(abspath.to_string_lossy().as_ref()) {
+                            if st.total_files >= env_summary_auto_file_threshold() {
+                                use_fast = true;
+                            }
+                        }
+                    }
+
+                    let mut json = if use_fast {
+                        build_fast_ai_summary_json(abspath.to_string_lossy().as_ref(), args.top_n)?
+                    } else {
+                        let graph = build_graph_for_path(abspath.to_string_lossy().as_ref())?;
+                        let exporter = archlens::exporter::Exporter::new();
+                        exporter.export_to_ai_summary_json(&graph).map_err(|e| e.to_string())?
+                    };
+
                     json = trim_ai_summary_json(json, args.top_n);
                     let _txt = serde_json::to_string_pretty(&json).unwrap_or("{}".into());
                     let etag = content_etag(&_txt);
@@ -1850,6 +1603,29 @@ fn handle_call(
                     let args: DiagramArgs =
                         serde_json::from_value(args).map_err(|e| e.to_string())?;
                     let path = ensure_absolute_path(args.project_path);
+                    // Cache key includes diagram type and detail level
+                    let detail = level(&args.detail_level).to_string();
+                    let diag_type = args.diagram_type.clone().unwrap_or_default();
+                    let key = export_cache_key(
+                        &path.to_string_lossy(),
+                        "diagram",
+                        &Some(vec![
+                            format!("diagram_type={}", diag_type),
+                            format!("detail={}", detail),
+                        ]),
+                        None,
+                        args.max_output_chars,
+                    );
+                    // Try cache first
+                    if let Some((etag_cached, output_cached)) = cache_get(&key, env_cache_ttl_ms()) {
+                        if args.etag.as_deref() == Some(&etag_cached) {
+                            return Ok(serde_json::json!({"status":"not_modified","etag": etag_cached}));
+                        } else {
+                            return Ok(serde_json::json!({"status":"ok","etag": etag_cached, "content":[{"type":"text","text": output_cached}]}));
+                        }
+                    }
+
+                    // Build mermaid
                     let mmd = cli::handlers::build_graph_mermaid(path.to_string_lossy().as_ref())
                         .or_else(|_| {
                         diagram::generate_mermaid_diagram(path.to_string_lossy().as_ref())
@@ -1857,10 +1633,11 @@ fn handle_call(
                     let txt = format_diagram_text(
                         mmd,
                         path.to_string_lossy().as_ref(),
-                        level(&args.detail_level),
+                        &detail,
                     );
                     let txt = clamp_text_with_limit(&txt, args.max_output_chars);
                     let etag = content_etag(&txt);
+                    cache_put(&key, &etag, &txt);
                     Ok(
                         serde_json::json!({"status":"ok","etag": etag, "content":[{"type":"text","text": txt}]}),
                     )
@@ -1918,11 +1695,6 @@ fn handle_call(
     }
 }
 
-async fn post_schema_read(
-    Json(_payload): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    Err(axum::http::StatusCode::BAD_REQUEST)
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -1979,23 +1751,6 @@ async fn main() -> anyhow::Result<()> {
         }),
     );
 
-    // 2) HTTP сервер (Streamable)
-    let http_opt = if env_enable_http() {
-        let port: u16 = std::env::var("ARCHLENS_MCP_PORT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(5178);
-        let addr = ("0.0.0.0".to_string(), port);
-        let app = build_http_router();
-        let http = axum::serve(
-            tokio::net::TcpListener::bind(addr).await?,
-            app.into_make_service(),
-        );
-        Some(http)
-    } else {
-        None
-    };
-
     // 3) STDIO JSON-RPC петля
     let (tx_lines, mut rx_lines) = tokio::sync::mpsc::unbounded_channel::<String>();
     std::thread::spawn(move || {
@@ -2008,6 +1763,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     let stdio = tokio::spawn(async move {
+        let one_shot_flag = env_one_shot();
         while let Some(line) = rx_lines.recv().await {
             if line.trim().is_empty() {
                 continue;
@@ -2025,16 +1781,19 @@ async fn main() -> anyhow::Result<()> {
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
                             if let Some(tool_name) = name_opt {
+                                let normalized = normalize_tool_name(&tool_name);
                                 let is_heavy = matches!(
-                                    tool_name.as_str(),
+                                    normalized.as_str(),
                                     "export.ai_compact"
+                                        | "export.ai_summary_json"
                                         | "structure.get"
                                         | "graph.build"
                                         | "analyze.project"
+                                        | "ai.recommend"
                                 );
                                 if is_heavy {
                                     handled_with_timeout = true;
-                                    let timeout = Duration::from_millis(env_timeout_ms());
+                                    let timeout = Duration::from_millis(heavy_timeout_ms(&normalized));
                                     let method = r.method.clone();
                                     let pclone = r.params.clone();
                                     let delay = env_test_delay_ms();
@@ -2050,6 +1809,7 @@ async fn main() -> anyhow::Result<()> {
                                                 if !is_notification {
                                                     write_json_line(id_opt.clone().unwrap(), Some(val), None)
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                             Ok(Err(msg)) => {
                                                 if !is_notification {
@@ -2059,6 +1819,7 @@ async fn main() -> anyhow::Result<()> {
                                                         Some(RpcError { code: -32603, message: msg }),
                                                     )
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                             Err(e) => {
                                                 if !is_notification {
@@ -2068,6 +1829,7 @@ async fn main() -> anyhow::Result<()> {
                                                         Some(RpcError { code: -32603, message: format!("join error: {}", e) }),
                                                     )
                                                 }
+                                                if one_shot_flag && !is_notification { std::process::exit(0); }
                                             }
                                         },
                                         Err(_) => write_json_line(
@@ -2079,6 +1841,7 @@ async fn main() -> anyhow::Result<()> {
                                             }),
                                         ),
                                     }
+                                    if one_shot_flag && !is_notification { std::process::exit(0); }
                                 }
                             }
                         }
@@ -2089,36 +1852,23 @@ async fn main() -> anyhow::Result<()> {
                             let id = id_opt.clone().unwrap_or(serde_json::json!(null));
                             match res {
                                 Ok(val) => write_json_line(id, Some(val), None),
-                                Err(msg) => write_json_line(
-                                    id,
-                                    Option::<serde_json::Value>::None,
-                                    Some(RpcError { code: -32603, message: msg }),
-                                ),
+                                Err(msg) => write_json_line(id, Option::<serde_json::Value>::None, Some(RpcError { code: -32603, message: msg })),
                             }
+                            if one_shot_flag { std::process::exit(0); }
                         }
                     }
                 }
-                Err(e) => write_json_line(
-                    serde_json::json!(null),
-                    Option::<serde_json::Value>::None,
-                    Some(RpcError {
-                        code: -32700,
-                        message: e.to_string(),
-                    }),
-                ),
+                Err(_e) => {
+                    write_json_line(serde_json::json!(null), Option::<serde_json::Value>::None, Some(RpcError { code: -32700, message: "parse error".into() }));
+                    if one_shot_flag { std::process::exit(0); }
+                }
             }
         }
     });
 
-    if let Some(http) = http_opt {
-        tokio::select! {
-            _ = http => Ok(()),
-            _ = stdio => Ok(()),
-        }
-    } else {
-        let _ = stdio.await;
-        Ok(())
-    }
+    // Run STDIO JSON-RPC loop only (HTTP removed)
+    let _ = stdio.await;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2336,3 +2086,118 @@ mod tests {
 }
 
 fn default_project_path() -> String { ".".to_string() }
+
+fn export_cache_key_git(
+    path: &str,
+    lv: &str,
+    sections: &Option<Vec<String>>,
+    top_n: Option<usize>,
+    max_chars: Option<usize>,
+) -> String {
+    let mut elems = vec![
+        path.to_string(),
+        lv.to_string(),
+        format!("top_n={}", top_n.unwrap_or(0)),
+        format!("max={}", max_chars.unwrap_or(0)),
+    ];
+    if let Some(s) = sections {
+        let mut s2 = s.clone();
+        s2.sort();
+        elems.push(format!("sections={}", s2.join("|")));
+    }
+    let head = git_head_and_dirty(Path::new(path)).unwrap_or_else(|| "nogit".to_string());
+    elems.push(format!("head={}", head));
+    let joined = elems.join("::");
+    let mut h = DefaultHasher::new();
+    joined.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn env_fast_budget_ms() -> u64 { env_u64("ARCHLENS_FAST_BUDGET_MS", 5_000) }
+fn env_fast_max_files() -> usize { env_usize("ARCHLENS_FAST_MAX_FILES", 100_000) }
+
+fn is_code_ext(ext: &str) -> bool {
+    matches!(ext,
+        "rs"|"js"|"ts"|"jsx"|"tsx"|"py"|"java"|"cpp"|"c"|"h"|"hpp"|"cs"|"php"|"rb"|"go"|"swift"|"kt"|"scala"|"clj"|"hs"|"ml"|"fs"|"dart"|"lua"|"r"|"m"|"mm"|"vb"|"pas"|"pl"|"pm"|"sh"|"bash"|"zsh"|"fish"|"ps1"|"psm1"|"psd1"|"json"|"yaml"|"yml"|"toml"|"xml"|"html"|"css"|"scss"|"sass"|"less"|"styl"|"vue"|"svelte"|"elm"|"ex"|"exs"|"erl"|"hrl")
+}
+
+struct QuickScanItem { name: String, path: String, size: u64 }
+struct QuickScanResult {
+    total_files: usize,
+    layers: std::collections::HashMap<String, usize>,
+    exts: std::collections::HashMap<String, usize>,
+    top_files: Vec<QuickScanItem>,
+}
+
+fn quick_scan_approx(project_path: &str, budget_ms: u64, max_files: usize, top_n: usize) -> QuickScanResult {
+    use ignore::WalkBuilder;
+    use std::collections::{HashMap, BinaryHeap};
+    let start = std::time::Instant::now();
+    let mut layers: HashMap<String, usize> = HashMap::new();
+    let mut exts: HashMap<String, usize> = HashMap::new();
+    let mut total = 0usize;
+    let mut heap: BinaryHeap<Reverse<(u64, String, String)>> = BinaryHeap::new();
+
+    let walker = WalkBuilder::new(project_path)
+        .hidden(false)
+        .parents(true)
+        .git_ignore(true)
+        .ignore(true)
+        .git_exclude(true)
+        .max_depth(Some(10))
+        .build();
+
+    for dent in walker {
+        if start.elapsed().as_millis() as u64 >= budget_ms { break; }
+        if total >= max_files { break; }
+        let Ok(d) = dent else { continue; };
+        let p = d.path();
+        if let Ok(md) = d.metadata() {
+            if md.is_file() {
+                total += 1;
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if !ext.is_empty() { *exts.entry(ext.clone()).or_insert(0) += 1; }
+                if is_code_ext(&ext) {
+                    let size = md.len();
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                    let rel = p.to_string_lossy().to_string();
+                    let layer = crate::cli::stats::determine_layer(p);
+                    *layers.entry(layer).or_insert(0) += 1;
+                    heap.push(Reverse((size, name, rel)));
+                    if heap.len() > top_n { let _ = heap.pop(); }
+                }
+            }
+        }
+    }
+    let mut top: Vec<QuickScanItem> = heap.into_vec().into_iter().map(|Reverse((size, name, path))| QuickScanItem{ name, path, size }).collect();
+    top.sort_by(|a,b| b.size.cmp(&a.size).then(a.name.cmp(&b.name)));
+    QuickScanResult { total_files: total, layers, exts, top_files: top }
+}
+
+fn fast_compact_markdown(project_path: &str, qs: &QuickScanResult, detail_level: &str, max_chars: Option<usize>) -> String {
+    let mut out = String::new();
+    out.push_str("# 🔍 PROJECT ANALYSIS\n");
+    out.push_str(&format!("**Path:** {}\n", project_path));
+    out.push_str(&format!("- Files (scanned): {}\n", qs.total_files));
+    // top file types
+    let mut types: Vec<(String, usize)> = qs.exts.iter().map(|(k,v)|(k.clone(), *v)).collect();
+    types.sort_by(|a,b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let take = match detail_level { "full" => types.len(), "standard" => types.len().min(10), _ => types.len().min(5) };
+    if take>0 { let list = types.into_iter().take(take).map(|(ext,c)| format!(".{}:{}", ext, c)).collect::<Vec<_>>().join(", "); out.push_str(&format!("- Types: {}\n", list)); }
+    out.push_str("\n# 📁 STRUCTURE\n");
+    // layers
+    let mut layers: Vec<(String, usize)> = qs.layers.iter().map(|(k,v)|(k.clone(),*v)).collect();
+    layers.sort_by(|a,b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    if !layers.is_empty() { out.push_str(&format!("- Layers: {}\n", layers.into_iter().map(|(n,_)| n).collect::<Vec<_>>().join(", "))); }
+    // top components by size
+    if !qs.top_files.is_empty() && detail_level != "summary" {
+        out.push_str("\n## Top Complexity Components (approx)\n");
+        for f in qs.top_files.iter().take(10) {
+            out.push_str(&format!("- {} ({:.1}KB)\n", f.name, (f.size as f64)/1024.0));
+        }
+    }
+    clamp_text_with_limit(&out, max_chars)
+}
+
+fn env_compact_mode() -> String { env_str("ARCHLENS_COMPACT_MODE", "auto") }
+fn env_compact_auto_file_threshold() -> usize { env_usize("ARCHLENS_COMPACT_AUTO_FILES", 2000) }
