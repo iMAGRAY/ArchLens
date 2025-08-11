@@ -19,6 +19,7 @@ use archlens::{
     ensure_absolute_path,
 };
 use regex::Regex;
+use std::cmp::Reverse;
 
 // =============== Types ===============
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1470,11 +1471,28 @@ fn handle_call(
                         }
                     }
 
-                    let out = export::generate_ai_compact(abspath.to_string_lossy().as_ref())
-                        .map_err(|e| e.to_string())?;
+                    // Possibly use fast path for huge repos
+                    let mode = env_compact_mode();
+                    let lv = level(&args.detail_level).to_string();
+                    let use_fast = if mode == "fast" {
+                        true
+                    } else if mode == "auto" {
+                        if let Ok(st) = stats::get_project_structure(abspath.to_string_lossy().as_ref()) {
+                            st.total_files >= env_compact_auto_file_threshold()
+                        } else { false }
+                    } else { false };
+
+                    let out = if use_fast {
+                        let qs = quick_scan_approx(abspath.to_string_lossy().as_ref(), env_fast_budget_ms(), env_fast_max_files(), args.top_n.unwrap_or(10));
+                        fast_compact_markdown(abspath.to_string_lossy().as_ref(), &qs, &lv, args.max_output_chars)
+                    } else {
+                        export::generate_ai_compact(abspath.to_string_lossy().as_ref())
+                            .map_err(|e| e.to_string())?
+                    };
+
                     let txt = format_export_markdown_with_controls(
                         out,
-                        level(&args.detail_level),
+                        &lv,
                         &args.sections,
                         args.top_n,
                         args.max_output_chars,
@@ -2048,3 +2066,118 @@ mod tests {
 }
 
 fn default_project_path() -> String { ".".to_string() }
+
+fn export_cache_key_git(
+    path: &str,
+    lv: &str,
+    sections: &Option<Vec<String>>,
+    top_n: Option<usize>,
+    max_chars: Option<usize>,
+) -> String {
+    let mut elems = vec![
+        path.to_string(),
+        lv.to_string(),
+        format!("top_n={}", top_n.unwrap_or(0)),
+        format!("max={}", max_chars.unwrap_or(0)),
+    ];
+    if let Some(s) = sections {
+        let mut s2 = s.clone();
+        s2.sort();
+        elems.push(format!("sections={}", s2.join("|")));
+    }
+    let head = git_head_and_dirty(Path::new(path)).unwrap_or_else(|| "nogit".to_string());
+    elems.push(format!("head={}", head));
+    let joined = elems.join("::");
+    let mut h = DefaultHasher::new();
+    joined.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn env_fast_budget_ms() -> u64 { env_u64("ARCHLENS_FAST_BUDGET_MS", 5_000) }
+fn env_fast_max_files() -> usize { env_usize("ARCHLENS_FAST_MAX_FILES", 100_000) }
+
+fn is_code_ext(ext: &str) -> bool {
+    matches!(ext,
+        "rs"|"js"|"ts"|"jsx"|"tsx"|"py"|"java"|"cpp"|"c"|"h"|"hpp"|"cs"|"php"|"rb"|"go"|"swift"|"kt"|"scala"|"clj"|"hs"|"ml"|"fs"|"dart"|"lua"|"r"|"m"|"mm"|"vb"|"pas"|"pl"|"pm"|"sh"|"bash"|"zsh"|"fish"|"ps1"|"psm1"|"psd1"|"json"|"yaml"|"yml"|"toml"|"xml"|"html"|"css"|"scss"|"sass"|"less"|"styl"|"vue"|"svelte"|"elm"|"ex"|"exs"|"erl"|"hrl")
+}
+
+struct QuickScanItem { name: String, path: String, size: u64 }
+struct QuickScanResult {
+    total_files: usize,
+    layers: std::collections::HashMap<String, usize>,
+    exts: std::collections::HashMap<String, usize>,
+    top_files: Vec<QuickScanItem>,
+}
+
+fn quick_scan_approx(project_path: &str, budget_ms: u64, max_files: usize, top_n: usize) -> QuickScanResult {
+    use ignore::WalkBuilder;
+    use std::collections::{HashMap, BinaryHeap};
+    let start = std::time::Instant::now();
+    let mut layers: HashMap<String, usize> = HashMap::new();
+    let mut exts: HashMap<String, usize> = HashMap::new();
+    let mut total = 0usize;
+    let mut heap: BinaryHeap<Reverse<(u64, String, String)>> = BinaryHeap::new();
+
+    let walker = WalkBuilder::new(project_path)
+        .hidden(false)
+        .parents(true)
+        .git_ignore(true)
+        .ignore(true)
+        .git_exclude(true)
+        .max_depth(Some(10))
+        .build();
+
+    for dent in walker {
+        if start.elapsed().as_millis() as u64 >= budget_ms { break; }
+        if total >= max_files { break; }
+        let Ok(d) = dent else { continue; };
+        let p = d.path();
+        if let Ok(md) = d.metadata() {
+            if md.is_file() {
+                total += 1;
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if !ext.is_empty() { *exts.entry(ext.clone()).or_insert(0) += 1; }
+                if is_code_ext(&ext) {
+                    let size = md.len();
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                    let rel = p.to_string_lossy().to_string();
+                    let layer = crate::cli::stats::determine_layer(p);
+                    *layers.entry(layer).or_insert(0) += 1;
+                    heap.push(Reverse((size, name, rel)));
+                    if heap.len() > top_n { let _ = heap.pop(); }
+                }
+            }
+        }
+    }
+    let mut top: Vec<QuickScanItem> = heap.into_vec().into_iter().map(|Reverse((size, name, path))| QuickScanItem{ name, path, size }).collect();
+    top.sort_by(|a,b| b.size.cmp(&a.size).then(a.name.cmp(&b.name)));
+    QuickScanResult { total_files: total, layers, exts, top_files: top }
+}
+
+fn fast_compact_markdown(project_path: &str, qs: &QuickScanResult, detail_level: &str, max_chars: Option<usize>) -> String {
+    let mut out = String::new();
+    out.push_str("# 🔍 PROJECT ANALYSIS\n");
+    out.push_str(&format!("**Path:** {}\n", project_path));
+    out.push_str(&format!("- Files (scanned): {}\n", qs.total_files));
+    // top file types
+    let mut types: Vec<(String, usize)> = qs.exts.iter().map(|(k,v)|(k.clone(), *v)).collect();
+    types.sort_by(|a,b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let take = match detail_level { "full" => types.len(), "standard" => types.len().min(10), _ => types.len().min(5) };
+    if take>0 { let list = types.into_iter().take(take).map(|(ext,c)| format!(".{}:{}", ext, c)).collect::<Vec<_>>().join(", "); out.push_str(&format!("- Types: {}\n", list)); }
+    out.push_str("\n# 📁 STRUCTURE\n");
+    // layers
+    let mut layers: Vec<(String, usize)> = qs.layers.iter().map(|(k,v)|(k.clone(),*v)).collect();
+    layers.sort_by(|a,b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    if !layers.is_empty() { out.push_str(&format!("- Layers: {}\n", layers.into_iter().map(|(n,_)| n).collect::<Vec<_>>().join(", "))); }
+    // top components by size
+    if !qs.top_files.is_empty() && detail_level != "summary" {
+        out.push_str("\n## Top Complexity Components (approx)\n");
+        for f in qs.top_files.iter().take(10) {
+            out.push_str(&format!("- {} ({:.1}KB)\n", f.name, (f.size as f64)/1024.0));
+        }
+    }
+    clamp_text_with_limit(&out, max_chars)
+}
+
+fn env_compact_mode() -> String { env_str("ARCHLENS_COMPACT_MODE", "auto") }
+fn env_compact_auto_file_threshold() -> usize { env_usize("ARCHLENS_COMPACT_AUTO_FILES", 2000) }
